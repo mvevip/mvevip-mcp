@@ -1,7 +1,7 @@
 # ESTADO DEL PROYECTO — mvevip-mcp (actualizado 22-oct-2026)
 
 Servidor MCP remoto (TypeScript/Express/MySQL) para que Claude y ChatGPT consulten la BD de MVEVIP.
-Destino: `https://mcp.mvevip.com/mcp` · AWS **us-east-1** · Lambda + Function URL detrás de CloudFront · RDS MySQL existente.
+Destino: `https://mcp.mvevip.com/mcp` · AWS **us-west-2** (Lambda, SES, stack) + CloudFront/ACM (us-east-1) · RDS MySQL existente `database-mvevip` (us-west-2, público, sin VPC).
 Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.md`.
 
 ## Reglas de trabajo acordadas con el usuario (cmino@mvevip.com)
@@ -23,23 +23,27 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
         anterior; el usuario debe tenerlas en su gestor (si se perdieron: generar nuevas y re-ejecutar `ALTER USER` en la BD).
 
 ## Decisiones tomadas
-- Región us-east-1. Dominio `mcp.mvevip.com`. DNS en proveedor externo (no Route 53) → CNAME manuales.
+- Región us-west-2 (decidido 22-oct, junto al RDS). Dominio `mcp.mvevip.com`. DNS en proveedor externo (no Route 53) → CNAME manuales.
 - Usuarios creados solo por un administrador (`aws lambda invoke` con payload `mvevipAdmin`), sin auto-registro.
 - SES: dominio `mvevip.com` NO verificado aún / estado desconocido → el stack lo crea (`CREATE_SES_IDENTITY=true`) y
   entrega 3 CNAME DKIM; hay que pedir salida del sandbox de SES.
 - ChatGPT y Claude permitidos como clientes OAuth (verificar redirect URIs al conectar).
 
-## SIGUIENTE PASO (cuando el usuario diga "continuemos")
-**Paso 2 – Certificado ACM para `mcp.mvevip.com` en us-east-1** (consola AWS o CLI):
-1. ACM (región N. Virginia) → solicitar certificado público, dominio `mcp.mvevip.com`, validación DNS.
-2. Crear en el DNS de mvevip.com el CNAME de validación (si es Cloudflare: solo DNS, sin proxy).
-3. Esperar estado **Emitido** y entregar el **ARN** → será la variable de GitHub `ACM_CERTIFICATE_ARN`.
-Pendiente de preguntar al usuario: **¿el RDS es público o privado (VPC)?** (define si la Lambda lleva VPC:
-`VPC_SUBNET_IDS`, `VPC_SECURITY_GROUP_IDS`, y NAT/endpoint de SES para enviar correo).
+## Verificación AWS (22-oct, cuenta 021891594659, usuario admin-cli)
+- No hay nada del MCP desplegado (sin stacks, Lambdas ni CloudFront `mcp.mvevip.com`). SES sin identidades, en sandbox (200/día).
+- **Paso 2 resuelto:** ya existe certificado `*.mvevip.com` ISSUED en us-east-1:
+  `arn:aws:acm:us-east-1:021891594659:certificate/1dae9056-0687-434c-a4ca-c20c76a9462f` → variable `ACM_CERTIFICATE_ARN`.
+- El proveedor OIDC de GitHub ya existe → desplegar el rol con `CreateOidcProvider=false`.
+- RDS público (acordado por ahora; la seguridad se resolverá en otro proyecto). **No modificar el RDS**: solo SQL entregado al usuario.
+- Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
+
+## SIGUIENTE PASO
+**Paso 3 – Rol OIDC de GitHub** (usuario o Claude con credenciales del entorno, confirmar antes): desplegar
+`infra/github-oidc-role.yaml` en us-west-2 con `CreateOidcProvider=false` y entregar `DeployRoleArn`.
 
 ## Pasos restantes (en orden)
-3. Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-east-1) y obtener `DeployRoleArn`.
-4. GitHub → Settings → Environments → `production`: variables (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION=us-east-1`,
+3. Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.
+4. GitHub → Settings → Environments → `production`: variables (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION=us-west-2`,
    `ACM_CERTIFICATE_ARN`, `DB_SSL=rds`, VPC si aplica…) y secrets (`MCP_SIGNING_SECRET`, `ORIGIN_VERIFY_SECRET`,
    `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME=vtgsa_ventas`, `AUTH_DB_USER`, `AUTH_DB_PASSWORD`). Ver tabla en `docs/DEPLOY.md`.
 5. Llevar la rama a `main` (PR si el usuario lo pide) y ejecutar el workflow "Deploy to production" (`ref=main`).

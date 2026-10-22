@@ -15,7 +15,7 @@ const htmlBody = (code: string) =>
    </div>`;
 
 export class SesMailer implements Mailer {
-  constructor(private readonly from: string, private readonly region = process.env.AWS_REGION || 'us-east-1') {}
+  constructor(private readonly from: string, private readonly region = process.env.AWS_REGION || 'us-west-2') {}
 
   async sendVerificationCode(to: string, code: string): Promise<void> {
     const { SESv2Client, SendEmailCommand } = await import('@aws-sdk/client-sesv2');

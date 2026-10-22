@@ -1,10 +1,10 @@
-# Despliegue a producción: `https://mcp.mvevip.com/mcp` (us-east-1)
+# Despliegue a producción: `https://mcp.mvevip.com/mcp` (us-west-2)
 
 Arquitectura: **Claude/ChatGPT → CloudFront (mcp.mvevip.com, certificado ACM) → Lambda Function URL → RDS**.
 Login: usuario + contraseña → código de 6 dígitos por correo (Amazon SES) → vinculación (OAuth 2.0 + PKCE).
 Despliegue: **Actions > "Deploy to production" > Run workflow** (o decirle a Claude "despliega").
 
-Reemplaza `<REGION>` por `us-east-1` en todo este documento.
+Región: **us-west-2** (junto al RDS `database-mvevip`). Solo el certificado ACM de CloudFront vive en us-east-1.
 
 ## A. Configuración única (en este orden)
 
@@ -19,25 +19,21 @@ CREATE DATABASE mvevip_mcp_auth CHARACTER SET utf8mb4;
 CREATE USER 'mcp_auth'@'%' IDENTIFIED BY '<password-2>';
 GRANT ALL ON mvevip_mcp_auth.* TO 'mcp_auth'@'%';
 ```
-Si el RDS es privado, la Lambda debe ir en su VPC: anota subnets privadas y un security group con acceso al puerto 3306
+El RDS `database-mvevip` es público, así que la Lambda va **sin VPC**. Si fuera privado, la Lambda debe ir en su VPC: anota subnets privadas y un security group con acceso al puerto 3306
 (variables `VPC_SUBNET_IDS` / `VPC_SECURITY_GROUP_IDS`). Para que la Lambda salga a SES desde una VPC privada
-necesita un NAT Gateway o un VPC endpoint de SES (`email-smtp` no; el de API es `com.amazonaws.us-east-1.email`).
+necesita un NAT Gateway o un VPC endpoint de SES (`email-smtp` no; el de API es `com.amazonaws.us-west-2.email`).
 
 ### 2. Certificado para mcp.mvevip.com (ACM, us-east-1)
-```bash
-aws acm request-certificate --region us-east-1 --domain-name mcp.mvevip.com --validation-method DNS
-aws acm describe-certificate --region us-east-1 --certificate-arn <ARN> \
-  --query 'Certificate.DomainValidationOptions[0].ResourceRecord'
-```
-Crea ese **CNAME de validación** en tu proveedor DNS. Espera a que el estado sea `ISSUED` y guarda el ARN.
+Ya existe un certificado `*.mvevip.com` emitido en us-east-1 que cubre `mcp.mvevip.com`; no hay que crear otro:
+`arn:aws:acm:us-east-1:021891594659:certificate/1dae9056-0687-434c-a4ca-c20c76a9462f`
 
 ### 3. Rol OIDC para GitHub
 ```bash
-aws cloudformation deploy --region us-east-1 --stack-name mvevip-mcp-github-oidc \
+aws cloudformation deploy --region us-west-2 --stack-name mvevip-mcp-github-oidc \
   --template-file infra/github-oidc-role.yaml --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides GitHubRepo=mvevip/mvevip-mcp
-# (CreateOidcProvider=false si la cuenta ya tiene el proveedor de GitHub)
-aws cloudformation describe-stacks --region us-east-1 --stack-name mvevip-mcp-github-oidc \
+  --parameter-overrides GitHubRepo=mvevip/mvevip-mcp CreateOidcProvider=false
+# (la cuenta ya tiene el proveedor de GitHub; con 'true' el stack fallaría)
+aws cloudformation describe-stacks --region us-west-2 --stack-name mvevip-mcp-github-oidc \
   --query "Stacks[0].Outputs[?OutputKey=='DeployRoleArn'].OutputValue" --output text
 ```
 
@@ -46,11 +42,11 @@ Variables:
 | Variable | Valor |
 |---|---|
 | `AWS_DEPLOY_ROLE_ARN` | ARN del paso 3 |
-| `AWS_REGION` | `us-east-1` |
+| `AWS_REGION` | `us-west-2` |
 | `ACM_CERTIFICATE_ARN` | ARN del paso 2 |
 | `DOMAIN_NAME` | `mcp.mvevip.com` (por defecto) |
 | `MAIL_FROM` | `MVEVIP <no-reply@mvevip.com>` (por defecto) |
-| `CREATE_SES_IDENTITY` | `true` (por defecto); `false` si `mvevip.com` ya está verificado en SES us-east-1 |
+| `CREATE_SES_IDENTITY` | `true` (por defecto); `false` si `mvevip.com` ya está verificado en SES us-west-2 |
 | `DB_SSL` | `rds` (recomendado) |
 | `VPC_SUBNET_IDS`, `VPC_SECURITY_GROUP_IDS` | solo si el RDS es privado |
 
@@ -66,12 +62,12 @@ El resumen del job y los outputs del stack (`aws cloudformation describe-stacks 
 1. **CNAME `mcp` → `dxxxx.cloudfront.net`** (`DnsCnameForDomain`).
 2. **3 CNAME de DKIM de SES** (`SesDkimName1..3` → `SesDkimValue1..3`) para verificar el dominio de correo.
    Mientras SES no esté verificado no se enviarán correos.
-3. **Salir del sandbox de SES**: consola SES (us-east-1) > *Account dashboard* > *Request production access*.
+3. **Salir del sandbox de SES**: consola SES (us-west-2) > *Account dashboard* > *Request production access*.
    Mientras tanto SES solo envía a direcciones verificadas (puedes verificar las de tus usuarios de prueba).
 
 ### 7. Crear usuarios (sin registro público; solo un administrador con credenciales IAM)
 ```bash
-aws lambda invoke --region us-east-1 --function-name mvevip-mcp-server \
+aws lambda invoke --region us-west-2 --function-name mvevip-mcp-server \
   --cli-binary-format raw-in-base64-out \
   --payload '{"mvevipAdmin":{"command":"create-user","username":"cmino","email":"cmino@mvevip.com"}}' out.json && cat out.json
 ```

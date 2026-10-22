@@ -44,14 +44,14 @@ Parameters:
     Type: String
     Default: 'true'
     AllowedValues: ['true', 'false']
-    Description: 'false si el dominio ya está verificado en SES (us-east-1)'
+    Description: 'false si el dominio ya está verificado en SES (us-west-2)'
   DomainName:
     Type: String
     Default: mcp.mvevip.com
   CertificateArn:
     Type: String
     Default: ''
-    Description: Certificado ACM en us-east-1 para DomainName ya validado. Vacío = solo Function URL (sin dominio propio).
+    Description: Certificado ACM (siempre us-east-1, requisito de CloudFront) para DomainName ya validado. Vacío = solo Function URL (sin dominio propio).
   OriginVerifySecret:
     Type: String
     NoEcho: true

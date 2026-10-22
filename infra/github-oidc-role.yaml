@@ -101,6 +101,12 @@ Resources:
                   - lambda:GetPolicy
                   - lambda:TagResource
                   - lambda:ListTags
+                  - lambda:DeleteFunction
+                  - lambda:DeleteFunctionUrlConfig
+                  - lambda:ListVersionsByFunction
+                  - lambda:GetFunctionCodeSigningConfig
+                  - lambda:UntagResource
+                  - lambda:GetFunctionConcurrency
                 Resource: !Sub arn:${AWS::Partition}:lambda:*:${AWS::AccountId}:function:${FunctionName}
               - Sid: ExecutionRole
                 Effect: Allow
@@ -113,6 +119,13 @@ Resources:
                   - iam:DeleteRolePolicy
                   - iam:PutRolePolicy
                   - iam:TagRole
+                  - iam:GetRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:DeleteRole
+                  - iam:UntagRole
+                  - iam:UpdateRole
+                  - iam:ListInstanceProfilesForRole
                 Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${FunctionName}-exec
               - Sid: CloudFrontDistribution
                 Effect: Allow
@@ -127,6 +140,13 @@ Resources:
                   - cloudfront:UpdateOriginRequestPolicy
                   - cloudfront:GetOriginRequestPolicy
                   - cloudfront:GetCachePolicy
+                  - cloudfront:DeleteDistribution
+                  - cloudfront:DeleteOriginRequestPolicy
+                  - cloudfront:ListDistributions
+                  - cloudfront:ListOriginRequestPolicies
+                  - cloudfront:ListCachePolicies
+                  - cloudfront:UntagResource
+                  - cloudfront:GetOriginRequestPolicyConfig
                 Resource: '*'
               - Sid: SesIdentity
                 Effect: Allow
@@ -136,6 +156,12 @@ Resources:
                   - ses:PutEmailIdentityDkimAttributes
                   - ses:TagResource
                   - ses:ListTagsForResource
+                  - ses:DeleteEmailIdentity
+                  - ses:UntagResource
+                  - ses:GetAccount
+                  - ses:PutEmailIdentityConfigurationSetAttributes
+                  - ses:PutEmailIdentityMailFromAttributes
+                  - ses:PutEmailIdentityFeedbackAttributes
                 Resource: '*'
               - Sid: LogGroup
                 Effect: Allow
@@ -144,6 +170,11 @@ Resources:
                   - logs:PutRetentionPolicy
                   - logs:DescribeLogGroups
                   - logs:TagResource
+                  - logs:DeleteLogGroup
+                  - logs:ListTagsForResource
+                  - logs:UntagResource
+                  - logs:ListTagsLogGroup
+                  - logs:TagLogGroup
                 Resource: '*'
               - Sid: VpcNetworkingForLambda
                 Effect: Allow

@@ -98,6 +98,29 @@ Resources:
                   - iam:PutRolePolicy
                   - iam:TagRole
                 Resource: !Sub arn:${AWS::Partition}:iam::${AWS::AccountId}:role/${FunctionName}-exec
+              - Sid: CloudFrontDistribution
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateDistribution
+                  - cloudfront:UpdateDistribution
+                  - cloudfront:GetDistribution
+                  - cloudfront:GetDistributionConfig
+                  - cloudfront:TagResource
+                  - cloudfront:ListTagsForResource
+                  - cloudfront:CreateOriginRequestPolicy
+                  - cloudfront:UpdateOriginRequestPolicy
+                  - cloudfront:GetOriginRequestPolicy
+                  - cloudfront:GetCachePolicy
+                Resource: '*'
+              - Sid: SesIdentity
+                Effect: Allow
+                Action:
+                  - ses:CreateEmailIdentity
+                  - ses:GetEmailIdentity
+                  - ses:PutEmailIdentityDkimAttributes
+                  - ses:TagResource
+                  - ses:ListTagsForResource
+                Resource: '*'
               - Sid: LogGroup
                 Effect: Allow
                 Action:

@@ -3,16 +3,19 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { ZodError } from 'zod';
 import { getConfig, isAllowedRedirectUri } from './config';
+import { randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import {
   signAuthCode,
   verifyAuthCode,
   verifyPkce,
   generateBearerToken,
   verifyBearerToken,
-  safeCompareStrings
+  hashVerificationCode
 } from './auth/tokenManager';
 import { RateLimiter } from './auth/rateLimiter';
-import { renderLoginScreen } from './auth/loginView';
+import { verifyPassword, verifyDummyPassword } from './auth/password';
+import { renderLoginScreen, renderCodeScreen } from './auth/loginView';
+import { getStore, getMailer } from './deps';
 import {
   JsonRpcRequest,
   McpToolDefinition,
@@ -44,6 +47,18 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'mcp-protocol-version', 'mcp-session-id']
 }));
 
+// Con CloudFront delante, solo se acepta tráfico que traiga el secreto de origen (la Function URL es pública).
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (config.originVerifySecret) {
+    const provided = Buffer.from(String(req.headers['x-origin-verify'] || ''));
+    const expected = Buffer.from(config.originVerifySecret);
+    if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+  }
+  return next();
+});
+
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: false, limit: '20kb' }));
 
@@ -71,7 +86,17 @@ app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
   return next(err);
 });
 
-const loginLimiter = new RateLimiter(5, 15 * 60 * 1000); // 5 claves erróneas / 15 min / IP
+// IP real del cliente. Detrás de CloudFront (origen verificado) se usa CloudFront-Viewer-Address.
+const clientIp = (req: Request): string => {
+  const viewer = config.originVerifySecret ? String(req.headers['cloudfront-viewer-address'] || '') : '';
+  if (viewer) return viewer.slice(0, viewer.lastIndexOf(':')).replace(/^\[|\]$/g, '') || viewer;
+  return req.ip || 'unknown';
+};
+
+const loginLimiter = new RateLimiter(10, 15 * 60 * 1000); // 10 intentos fallidos / 15 min / IP
+const CODE_TTL_MS = 10 * 60 * 1000;
+const MAX_CODE_ATTEMPTS = 5;
+const MAX_CODES_PER_WINDOW = 3; // códigos enviados por usuario cada 10 min
 const tokenLimiter = new RateLimiter(30, 60 * 1000); // 30 intercambios / min / IP
 
 // ---------------------------------------------------------------------------
@@ -85,6 +110,7 @@ app.get('/health', (_req: Request, res: Response) => {
 // 2. Metadatos de Autenticación OAuth 2.0 (RFC 8414 / RFC 9728)
 // ---------------------------------------------------------------------------
 const getBaseUrl = (req: Request): string => {
+  if (config.publicUrl) return config.publicUrl;
   const forwardedProto = req.headers['x-forwarded-proto'];
   const proto = forwardedProto ? String(forwardedProto).split(',')[0].trim() : req.protocol;
   return `${proto}://${req.headers.host}`;
@@ -151,11 +177,15 @@ const sendAuthorizeError = (res: Response, message: string) => {
   res.status(400).type('text/plain').send(`Solicitud de autorización inválida: ${message}`);
 };
 
-const sendLoginScreen = (res: Response, params: AuthorizeParams, status = 200, error?: string) => {
+const securePage = (res: Response, status: number, html: string) => {
   noStore(res);
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
-  res.status(status).type('text/html; charset=utf-8').send(renderLoginScreen({
+  res.status(status).type('text/html; charset=utf-8').send(html);
+};
+
+const sendLoginScreen = (res: Response, params: AuthorizeParams, status = 200, error?: string) =>
+  securePage(res, status, renderLoginScreen({
     actionPath: '/authorize',
     redirectUri: params.redirectUri,
     state: params.state,
@@ -163,6 +193,18 @@ const sendLoginScreen = (res: Response, params: AuthorizeParams, status = 200, e
     codeChallenge: params.codeChallenge,
     error
   }));
+
+const sendCodeScreen = (res: Response, challengeId: string, email: string, status = 200, error?: string) =>
+  securePage(res, status, renderCodeScreen({
+    actionPath: '/authorize',
+    challengeId,
+    maskedEmail: maskEmail(email),
+    error
+  }));
+
+const maskEmail = (email: string): string => {
+  const [local, domain] = email.split('@');
+  return `${local.slice(0, 1)}***@${domain}`;
 };
 
 app.get('/authorize', (req: Request, res: Response) => {
@@ -177,34 +219,134 @@ app.get('/authorize', (req: Request, res: Response) => {
   return sendLoginScreen(res, params);
 });
 
-app.post('/authorize', (req: Request, res: Response) => {
-  const body = (req.body || {}) as Record<string, unknown>;
+const INVALID_CREDENTIALS = 'Usuario o contraseña incorrectos, o cuenta bloqueada temporalmente.';
+
+// Paso 1: usuario + contraseña -> se envía un código por correo
+const handleLogin = async (req: Request, res: Response) => {
+  const body = req.body as Record<string, unknown>;
   const params = parseAuthorizeParams(body);
   if (typeof params === 'string') return sendAuthorizeError(res, params);
 
-  const ip = req.ip || 'unknown';
+  const ip = clientIp(req);
   const retryAfter = loginLimiter.retryAfterSeconds(ip);
   if (retryAfter > 0) {
     res.setHeader('Retry-After', String(retryAfter));
     return sendLoginScreen(res, params, 429, 'Demasiados intentos fallidos. Intente de nuevo más tarde.');
   }
 
-  if (!safeCompareStrings(str(body.access_key).trim(), config.accessKey)) {
-    loginLimiter.record(ip);
-    console.warn('[AUTH] Intento de autorización con clave incorrecta.');
-    return sendLoginScreen(res, params, 401, 'Clave de autorización incorrecta.');
+  const store = getStore();
+  const username = str(body.username).trim().toLowerCase().slice(0, 64);
+  const password = str(body.password).slice(0, 256);
+  const user = username && password ? await store.findUserByUsername(username) : null;
+  const locked = !!user && user.lockedUntil > Date.now();
+
+  let valid = false;
+  if (user && user.isActive && !locked) {
+    valid = await verifyPassword(password, user.passwordHash);
+    if (!valid) await store.recordLoginFailure(user.id);
+  } else {
+    await verifyDummyPassword(password); // mismo costo de tiempo: no revela si el usuario existe
   }
 
+  if (!user || !valid) {
+    loginLimiter.record(ip);
+    console.warn('[AUTH] Inicio de sesión fallido.');
+    return sendLoginScreen(res, params, 401, INVALID_CREDENTIALS);
+  }
+
+  if ((await store.countRecentChallenges(user.id, Date.now() - CODE_TTL_MS)) >= MAX_CODES_PER_WINDOW) {
+    return sendLoginScreen(res, params, 429, 'Ya se enviaron varios códigos. Espere unos minutos e intente de nuevo.');
+  }
+
+  const challengeId = randomBytes(16).toString('hex');
+  const code = String(randomInt(100000, 1000000));
+  await store.createChallenge({
+    id: challengeId,
+    userId: user.id,
+    codeHash: hashVerificationCode(config.signingSecret, challengeId, code),
+    expiresAt: Date.now() + CODE_TTL_MS,
+    clientId: params.clientId,
+    redirectUri: params.redirectUri,
+    state: params.state,
+    codeChallenge: params.codeChallenge
+  });
+
+  try {
+    await getMailer().sendVerificationCode(user.email, code);
+  } catch (err: any) {
+    console.error('[MAIL] Error enviando el código:', err?.name || err?.message);
+    return sendLoginScreen(res, params, 502, 'No se pudo enviar el correo de verificación. Contacte al administrador.');
+  }
+
+  console.log(`[AUTH] Código de verificación enviado (usuario ${user.id}).`);
+  return sendCodeScreen(res, challengeId, user.email);
+};
+
+// Paso 2: código del correo -> código OAuth y redirección
+const handleVerify = async (req: Request, res: Response) => {
+  const body = req.body as Record<string, unknown>;
+  const store = getStore();
+  const challengeId = str(body.challenge_id);
+  const ip = clientIp(req);
+
+  const retryAfter = loginLimiter.retryAfterSeconds(ip);
+  if (retryAfter > 0) {
+    res.setHeader('Retry-After', String(retryAfter));
+    return sendAuthorizeError(res, 'Demasiados intentos fallidos. Intente de nuevo más tarde.');
+  }
+
+  const challenge = /^[a-f0-9]{32}$/.test(challengeId) ? await store.getChallenge(challengeId) : null;
+  if (!challenge) {
+    loginLimiter.record(ip);
+    return sendAuthorizeError(res, 'La verificación expiró o no es válida. Vuelva a iniciar el proceso desde Claude o ChatGPT.');
+  }
+
+  const restart = (message: string) =>
+    sendLoginScreen(res, {
+      clientId: challenge.clientId,
+      redirectUri: challenge.redirectUri,
+      state: challenge.state,
+      codeChallenge: challenge.codeChallenge
+    }, 400, message);
+
+  if (challenge.consumed || Date.now() > challenge.expiresAt || challenge.attempts >= MAX_CODE_ATTEMPTS) {
+    return restart('El código expiró o superó los intentos permitidos. Inicie sesión nuevamente.');
+  }
+
+  const user = await store.findUserById(challenge.userId);
+  if (!user || !user.isActive) return restart(INVALID_CREDENTIALS);
+
+  const expected = Buffer.from(challenge.codeHash);
+  const provided = Buffer.from(hashVerificationCode(config.signingSecret, challenge.id, str(body.code).trim()));
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    await store.incrementChallengeAttempts(challenge.id);
+    loginLimiter.record(ip);
+    return sendCodeScreen(res, challenge.id, user.email, 401, 'Código incorrecto.');
+  }
+
+  if (!(await store.consumeChallenge(challenge.id))) {
+    return restart('El código ya fue utilizado. Inicie sesión nuevamente.');
+  }
+  await store.recordLoginSuccess(user.id);
   loginLimiter.reset(ip);
-  const code = signAuthCode(config.signingSecret, params.clientId, params.redirectUri, params.codeChallenge);
 
-  const targetUrl = new URL(params.redirectUri);
+  const code = signAuthCode(config.signingSecret, user.id, challenge.clientId, challenge.redirectUri, challenge.codeChallenge);
+  const targetUrl = new URL(challenge.redirectUri);
   targetUrl.searchParams.set('code', code);
-  targetUrl.searchParams.set('state', params.state);
+  targetUrl.searchParams.set('state', challenge.state);
 
-  console.log('[AUTH] Autorización concedida.');
+  console.log(`[AUTH] Autorización concedida (usuario ${user.id}).`);
   noStore(res);
   return res.redirect(targetUrl.toString());
+};
+
+app.post('/authorize', async (req: Request, res: Response) => {
+  try {
+    return str(req.body?.step) === 'verify' ? await handleVerify(req, res) : await handleLogin(req, res);
+  } catch (err: any) {
+    console.error('[AUTH] Error en /authorize:', err?.message || err);
+    return sendAuthorizeError(res, 'Error interno. Intente nuevamente.');
+  }
 });
 
 // Intercambio del código por el Bearer token
@@ -214,7 +356,7 @@ app.post('/token', (req: Request, res: Response) => {
   const oauthError = (status: number, error: string, description: string) =>
     res.status(status).json({ error, error_description: description });
 
-  const ip = req.ip || 'unknown';
+  const ip = clientIp(req);
   if (tokenLimiter.retryAfterSeconds(ip) > 0) {
     return oauthError(429, 'slow_down', 'Demasiadas solicitudes.');
   }
@@ -240,7 +382,7 @@ app.post('/token', (req: Request, res: Response) => {
 
   console.log('[AUTH] Token de acceso emitido.');
   return res.json({
-    access_token: generateBearerToken(config.signingSecret),
+    access_token: generateBearerToken(config.signingSecret, payload.sub),
     token_type: 'Bearer',
     expires_in: 2592000, // 30 días
     scope: 'mcp:all'
@@ -270,20 +412,46 @@ app.post('/register', (req: Request, res: Response) => {
 // ---------------------------------------------------------------------------
 // 4. Middleware de Seguridad para /mcp (todas las llamadas requieren Bearer token)
 // ---------------------------------------------------------------------------
-const authenticateMcp = (req: Request, res: Response, next: NextFunction) => {
-  if (verifyBearerToken(req.headers.authorization, config.signingSecret)) {
-    return next();
+const userCache = new Map<number, number>(); // userId -> expira (ms) de la comprobación "usuario activo"
+const USER_CHECK_TTL_MS = 60 * 1000;
+
+const authenticateMcp = async (req: Request, res: Response, next: NextFunction) => {
+  const unauthorized = () => {
+    res.setHeader(
+      'WWW-Authenticate',
+      `Bearer resource_metadata="${getBaseUrl(req)}/.well-known/oauth-protected-resource"`
+    );
+    return res.status(401).json({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32001, message: 'No autorizado. Complete la autorización e incluya el Bearer token.' }
+    });
+  };
+
+  const token = verifyBearerToken(req.headers.authorization, config.signingSecret);
+  if (!token) return unauthorized();
+
+  // Un usuario deshabilitado pierde el acceso en máximo 60 s, aunque su token siga vigente.
+  if ((userCache.get(token.userId) ?? 0) < Date.now()) {
+    try {
+      const user = await getStore().findUserById(token.userId);
+      if (!user || !user.isActive) {
+        userCache.delete(token.userId);
+        return unauthorized();
+      }
+      userCache.set(token.userId, Date.now() + USER_CHECK_TTL_MS);
+    } catch (err: any) {
+      console.error('[AUTH] No se pudo validar al usuario:', err?.message || err);
+      return res.status(503).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32002, message: 'Servicio de autenticación no disponible.' }
+      });
+    }
   }
 
-  res.setHeader(
-    'WWW-Authenticate',
-    `Bearer resource_metadata="${getBaseUrl(req)}/.well-known/oauth-protected-resource"`
-  );
-  return res.status(401).json({
-    jsonrpc: '2.0',
-    id: null,
-    error: { code: -32001, message: 'No autorizado. Complete la autorización OAuth e incluya el Bearer token.' }
-  });
+  (req as any).userId = token.userId;
+  return next();
 };
 
 // ---------------------------------------------------------------------------
@@ -390,7 +558,7 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
       case 'tools/call': {
         const toolName = params?.name;
         const toolArgs = params?.arguments || {};
-        console.log(`[TOOL_CALL] ${toolName}`);
+        console.log(`[TOOL_CALL] user=${(req as any).userId} tool=${String(toolName)}`);
 
         switch (toolName) {
           case 'test_db_connection':

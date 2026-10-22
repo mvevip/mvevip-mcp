@@ -1,38 +1,31 @@
-export interface LoginViewParams {
+export interface OAuthContext {
   actionPath: string;
   redirectUri: string;
   state: string;
   clientId: string;
   codeChallenge: string;
+}
+
+export interface LoginViewParams extends OAuthContext {
   error?: string;
 }
 
-export const renderLoginScreen = (params: LoginViewParams): string => {
-  const esc = (s: string) =>
-    String(s || '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+export interface CodeViewParams {
+  actionPath: string;
+  challengeId: string;
+  maskedEmail: string;
+  error?: string;
+}
 
-  const errorMessageHtml = params.error
-    ? `<div class="alert-error">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="8" x2="12" y2="12"></line>
-          <line x1="12" y1="16" x2="12.01" y2="16"></line>
-        </svg>
-        <span>${esc(params.error)}</span>
-      </div>`
-    : '';
+const esc = (s: string): string =>
+  String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Autorización de Conector MCP — MVEVIP</title>
-  <style>
+const STYLES = `
     :root {
       --bg-color: #0b1120;
       --card-bg: #1e293b;
@@ -168,6 +161,11 @@ export const renderLoginScreen = (params: LoginViewParams): string => {
     .btn-submit:hover {
       background: #0369a1;
     }
+    .hint {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
     .btn-submit:active {
       transform: scale(0.99);
     }
@@ -176,7 +174,27 @@ export const renderLoginScreen = (params: LoginViewParams): string => {
       font-size: 12px;
       color: #64748b;
     }
-  </style>
+  `;
+
+const errorHtml = (error?: string): string =>
+  error
+    ? `<div class="alert-error">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>${esc(error)}</span>
+      </div>`
+    : '';
+
+const page = (subtitle: string, body: string): string => `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autorización de Conector MCP — MVEVIP</title>
+  <style>${STYLES}</style>
 </head>
 <body>
   <div class="container">
@@ -188,43 +206,50 @@ export const renderLoginScreen = (params: LoginViewParams): string => {
       Conexión Segura MCP
     </div>
     <h1 class="logo-title">MVEVIP Corporate MCP</h1>
-    <p class="subtitle">Claude solicita autorización para consultar la base de datos empresarial. Ingrese la clave corporativa para confirmar el uso.</p>
-
-    ${errorMessageHtml}
-
-    <form method="POST" action="${esc(params.actionPath)}">
-      <input type="hidden" name="redirect_uri" value="${esc(params.redirectUri)}">
-      <input type="hidden" name="state" value="${esc(params.state)}">
-      <input type="hidden" name="client_id" value="${esc(params.clientId)}">
-      <input type="hidden" name="code_challenge" value="${esc(params.codeChallenge)}">
-
-      <div class="form-group">
-        <label class="label" for="access_key">Clave o Código de Autorización</label>
-        <div class="input-wrapper">
-          <input 
-            type="password" 
-            id="access_key" 
-            name="access_key" 
-            class="input-field" 
-            placeholder="Ingrese la clave corporativa" 
-            required 
-            autofocus
-          >
-        </div>
-      </div>
-
-      <div class="client-info">
-        <span>Cliente solicitante:</span>
-        <strong>Claude / Anthropic</strong>
-      </div>
-
-      <button type="submit" class="btn-submit">Confirmar y Autorizar Conexión</button>
-    </form>
-
+    <p class="subtitle">${subtitle}</p>
+    ${body}
     <div class="footer">
       MVEVIP System © 2026 • Acceso Protegido
     </div>
   </div>
 </body>
 </html>`;
-};
+
+const field = (id: string, label: string, attrs: string): string => `
+      <div class="form-group">
+        <label class="label" for="${id}">${label}</label>
+        <div class="input-wrapper">
+          <input id="${id}" name="${id}" class="input-field" required ${attrs}>
+        </div>
+      </div>`;
+
+/** Paso 1: usuario y contraseña. */
+export const renderLoginScreen = (params: LoginViewParams): string =>
+  page(
+    'Un asistente de IA solicita autorización para consultar la información empresarial. Inicie sesión con su usuario corporativo; le enviaremos un código de verificación por correo.',
+    `${errorHtml(params.error)}
+    <form method="POST" action="${esc(params.actionPath)}" autocomplete="on">
+      <input type="hidden" name="step" value="login">
+      <input type="hidden" name="redirect_uri" value="${esc(params.redirectUri)}">
+      <input type="hidden" name="state" value="${esc(params.state)}">
+      <input type="hidden" name="client_id" value="${esc(params.clientId)}">
+      <input type="hidden" name="code_challenge" value="${esc(params.codeChallenge)}">
+      ${field('username', 'Usuario', 'type="text" autocomplete="username" autocapitalize="none" spellcheck="false" autofocus maxlength="64"')}
+      ${field('password', 'Contraseña', 'type="password" autocomplete="current-password" maxlength="256"')}
+      <button type="submit" class="btn-submit">Continuar</button>
+    </form>`
+  );
+
+/** Paso 2: código enviado por correo. */
+export const renderCodeScreen = (params: CodeViewParams): string =>
+  page(
+    'Verificación en dos pasos',
+    `<p class="hint">Enviamos un código de 6 dígitos a <strong>${esc(params.maskedEmail)}</strong>. Vence en 10 minutos.</p>
+    ${errorHtml(params.error)}
+    <form method="POST" action="${esc(params.actionPath)}" autocomplete="off">
+      <input type="hidden" name="step" value="verify">
+      <input type="hidden" name="challenge_id" value="${esc(params.challengeId)}">
+      ${field('code', 'Código de verificación', 'type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus')}
+      <button type="submit" class="btn-submit">Verificar y Autorizar</button>
+    </form>`
+  );

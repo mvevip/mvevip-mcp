@@ -1,34 +1,95 @@
-# Despliegue a producción (GitHub Actions + AWS Lambda)
+# Despliegue a producción: `https://mcp.mvevip.com/mcp` (us-east-1)
 
-Flujo: **Actions > "Deploy to production" > Run workflow** (o decirle a Claude "despliega").
-El workflow ejecuta typecheck y pruebas, empaqueta con esbuild, actualiza la infraestructura
-(CloudFormation, `infra/template.yaml`), sube el código y verifica `/health` y que `/mcp` exija token.
+Arquitectura: **Claude/ChatGPT → CloudFront (mcp.mvevip.com, certificado ACM) → Lambda Function URL → RDS**.
+Login: usuario + contraseña → código de 6 dígitos por correo (Amazon SES) → vinculación (OAuth 2.0 + PKCE).
+Despliegue: **Actions > "Deploy to production" > Run workflow** (o decirle a Claude "despliega").
 
-## Configuración única
+Reemplaza `<REGION>` por `us-east-1` en todo este documento.
 
-1. **Rol OIDC en AWS** (cuenta de producción, con un administrador):
-   ```bash
-   aws cloudformation deploy --region <REGION> --stack-name mvevip-mcp-github-oidc \
-     --template-file infra/github-oidc-role.yaml --capabilities CAPABILITY_NAMED_IAM \
-     --parameter-overrides GitHubRepo=mvevip/mvevip-mcp
-   # Si la cuenta ya tiene el proveedor OIDC de GitHub: CreateOidcProvider=false
-   ```
-   Copiar el output `DeployRoleArn`. Solo puede asumirlo el environment `production` de este repo.
-2. **GitHub > Settings > Environments > `production`** (activar *Required reviewers* si se quiere aprobación manual):
-   - Variables: `AWS_DEPLOY_ROLE_ARN`, `AWS_REGION` (ej. `us-east-2`), opcionales `DB_PORT`, `DB_SSL` (`rds`|`true`),
-     `VPC_SUBNET_IDS`, `VPC_SECURITY_GROUP_IDS` (comas; necesarias si la BD/RDS es privada).
-   - Secrets: `MCP_ACCESS_KEY` (`openssl rand -base64 24`), `MCP_SIGNING_SECRET` (`openssl rand -hex 32`),
-     `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`.
-3. **Usuario MySQL de solo lectura** (`GRANT SELECT` únicamente). Es la defensa principal; el filtro SQL del servidor es secundaria.
-4. El workflow de deploy solo aparece en Actions cuando está en la rama por defecto (`main`).
+## A. Configuración única (en este orden)
 
-## Después del primer despliegue
-El resumen del job muestra la URL del conector (`https://<id>.lambda-url.<region>.on.aws/mcp`).
-Registrarla en Claude (Personalizar > Conectores) e ingresar `MCP_ACCESS_KEY` en la pantalla de MVEVIP.
+### 1. Base de datos (en el RDS existente)
+```sql
+-- Usuario de solo lectura para la base de negocio
+CREATE USER 'mcp_ro'@'%' IDENTIFIED BY '<password-1>';
+GRANT SELECT ON <base_negocio>.* TO 'mcp_ro'@'%';
+
+-- Base y usuario de autenticación (las tablas se crean solas)
+CREATE DATABASE mvevip_mcp_auth CHARACTER SET utf8mb4;
+CREATE USER 'mcp_auth'@'%' IDENTIFIED BY '<password-2>';
+GRANT ALL ON mvevip_mcp_auth.* TO 'mcp_auth'@'%';
+```
+Si el RDS es privado, la Lambda debe ir en su VPC: anota subnets privadas y un security group con acceso al puerto 3306
+(variables `VPC_SUBNET_IDS` / `VPC_SECURITY_GROUP_IDS`). Para que la Lambda salga a SES desde una VPC privada
+necesita un NAT Gateway o un VPC endpoint de SES (`email-smtp` no; el de API es `com.amazonaws.us-east-1.email`).
+
+### 2. Certificado para mcp.mvevip.com (ACM, us-east-1)
+```bash
+aws acm request-certificate --region us-east-1 --domain-name mcp.mvevip.com --validation-method DNS
+aws acm describe-certificate --region us-east-1 --certificate-arn <ARN> \
+  --query 'Certificate.DomainValidationOptions[0].ResourceRecord'
+```
+Crea ese **CNAME de validación** en tu proveedor DNS. Espera a que el estado sea `ISSUED` y guarda el ARN.
+
+### 3. Rol OIDC para GitHub
+```bash
+aws cloudformation deploy --region us-east-1 --stack-name mvevip-mcp-github-oidc \
+  --template-file infra/github-oidc-role.yaml --capabilities CAPABILITY_NAMED_IAM \
+  --parameter-overrides GitHubRepo=mvevip/mvevip-mcp
+# (CreateOidcProvider=false si la cuenta ya tiene el proveedor de GitHub)
+aws cloudformation describe-stacks --region us-east-1 --stack-name mvevip-mcp-github-oidc \
+  --query "Stacks[0].Outputs[?OutputKey=='DeployRoleArn'].OutputValue" --output text
+```
+
+### 4. GitHub > Settings > Environments > `production`
+Variables:
+| Variable | Valor |
+|---|---|
+| `AWS_DEPLOY_ROLE_ARN` | ARN del paso 3 |
+| `AWS_REGION` | `us-east-1` |
+| `ACM_CERTIFICATE_ARN` | ARN del paso 2 |
+| `DOMAIN_NAME` | `mcp.mvevip.com` (por defecto) |
+| `MAIL_FROM` | `MVEVIP <no-reply@mvevip.com>` (por defecto) |
+| `CREATE_SES_IDENTITY` | `true` (por defecto); `false` si `mvevip.com` ya está verificado en SES us-east-1 |
+| `DB_SSL` | `rds` (recomendado) |
+| `VPC_SUBNET_IDS`, `VPC_SECURITY_GROUP_IDS` | solo si el RDS es privado |
+
+Secrets: `MCP_SIGNING_SECRET` (`openssl rand -hex 32`), `ORIGIN_VERIFY_SECRET` (`openssl rand -hex 32`),
+`DB_HOST`, `DB_USER` (`mcp_ro`), `DB_PASSWORD`, `DB_NAME`, `AUTH_DB_USER` (`mcp_auth`), `AUTH_DB_PASSWORD`.
+Opcional: *Required reviewers* para aprobar cada despliegue.
+
+### 5. Llevar los cambios a `main` y desplegar
+El workflow manual solo aparece en Actions desde la rama por defecto. Luego: Run workflow (`ref=main`).
+
+### 6. DNS (en tu proveedor, tras el primer despliegue)
+El resumen del job y los outputs del stack (`aws cloudformation describe-stacks --stack-name mvevip-mcp`) muestran:
+1. **CNAME `mcp` → `dxxxx.cloudfront.net`** (`DnsCnameForDomain`).
+2. **3 CNAME de DKIM de SES** (`SesDkimName1..3` → `SesDkimValue1..3`) para verificar el dominio de correo.
+   Mientras SES no esté verificado no se enviarán correos.
+3. **Salir del sandbox de SES**: consola SES (us-east-1) > *Account dashboard* > *Request production access*.
+   Mientras tanto SES solo envía a direcciones verificadas (puedes verificar las de tus usuarios de prueba).
+
+### 7. Crear usuarios (sin registro público; solo un administrador con credenciales IAM)
+```bash
+aws lambda invoke --region us-east-1 --function-name mvevip-mcp-server \
+  --cli-binary-format raw-in-base64-out \
+  --payload '{"mvevipAdmin":{"command":"create-user","username":"cmino","email":"cmino@mvevip.com"}}' out.json && cat out.json
+```
+Sin `password`, se genera una y se devuelve **una sola vez** (`generatedPassword`). Otros comandos:
+`init`, `set-password`, `disable-user`, `enable-user`, `list-users` (mismo formato). Un usuario deshabilitado pierde
+el acceso en máximo 60 s. En desarrollo local: `npx tsx scripts/auth-admin.ts create-user <usuario> <correo>`.
+
+### 8. Conectar
+- **Claude:** Personalizar > Conectores > Agregar conector personalizado > `https://mcp.mvevip.com/mcp`.
+- **ChatGPT:** Ajustes > Conectores (modo desarrollador) > Crear > URL `https://mcp.mvevip.com/mcp`, autenticación OAuth.
+- Se abre el login de MVEVIP: usuario y contraseña → llega el código por correo → ingrésalo → conectado.
+- Prueba pidiendo `test_db_connection`.
 
 ## Operación
-- **Revocar todos los tokens:** cambiar el secret `MCP_SIGNING_SECRET` y volver a desplegar.
-- **Rotar la clave de acceso:** cambiar `MCP_ACCESS_KEY` y desplegar (los tokens existentes siguen vigentes hasta rotar la firma).
-- **Logs:** CloudWatch `/aws/lambda/mvevip-mcp-server` (solo método, ruta y nombre de herramienta; sin consultas ni cabeceras).
-- **Limitación conocida:** el límite de intentos de login es en memoria por instancia Lambda; la clave larga y aleatoria es la protección real.
-- Los scripts `build_zip.ps1` / `deploy_aws.ps1` son del flujo anterior y quedan obsoletos.
+- **Revocar todos los tokens:** cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
+- **Bloqueo de cuenta:** 5 contraseñas erróneas = 15 min bloqueada (guardado en BD, vale entre instancias).
+  Código por correo: 10 min de vigencia, 5 intentos, un solo uso, máximo 3 envíos por usuario cada 10 min.
+- **Logs:** CloudWatch `/aws/lambda/mvevip-mcp-server` (método, ruta, id de usuario y herramienta; sin SQL ni cabeceras).
+- La Function URL directa queda protegida: solo responde si la petición trae el secreto de CloudFront.
+- Los redirect URI permitidos incluyen Claude y ChatGPT; agrega más con `MCP_ALLOWED_REDIRECT_URIS` si hiciera falta.
+- Los scripts `build_zip.ps1` / `deploy_aws.ps1` son del flujo anterior y están obsoletos.

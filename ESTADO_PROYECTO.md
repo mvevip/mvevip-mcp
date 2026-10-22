@@ -44,9 +44,13 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
   (`repo:mvevip@344858672/mvevip-mcp@1430282490:environment:production`). Se actualizó el stack `mvevip-mcp-github-oidc`
   para aceptar ambos formatos (UPDATE_COMPLETE). Reintentar el deploy.
 
+- [x] **Paso 5 – Deploy OK (22-oct):** stack `mvevip-mcp` CREATE_COMPLETE en us-west-2, Lambda `mvevip-mcp-server` con código,
+  CloudFront `d3enxcswftihjc.cloudfront.net` responde `/health` 200; Function URL directa 403 (protegida). El deploy #2 falló por
+  permisos del rol (ya ampliados) y se limpió el stack fallido.
+
 ## SIGUIENTE PASO
-**Paso 5 – relanzar** Actions > "Deploy to production" (`ref=main`) y revisar el resultado.
-(Pendiente: restringir el environment `production` a la rama `main`, ya indicado por el usuario.)
+**Paso 6 – DNS** (en el proveedor de mvevip.com): CNAME `mcp` → `d3enxcswftihjc.cloudfront.net` y 3 CNAME DKIM de SES
+(ver outputs del stack `mvevip-mcp`). Luego salir del sandbox de SES (us-west-2) y crear el primer usuario (paso 7).
 
 ## (Referencia, Paso 4 ya hecho)
 **Paso 4 – GitHub → Settings → Environments → `production`**: crear variables y secrets (tabla en `docs/DEPLOY.md`).

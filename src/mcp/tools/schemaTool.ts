@@ -1,6 +1,7 @@
 import { dbService } from '../../services/dbService';
+import { ToolResult } from '../types';
 
-export const handleDescribeDatabase = async (): Promise<{ content: Array<{ type: 'text'; text: string }> }> => {
+export const handleDescribeDatabase = async (): Promise<ToolResult> => {
   try {
     const overview = await dbService.getDatabaseOverview();
 
@@ -38,14 +39,15 @@ export const handleDescribeDatabase = async (): Promise<{ content: Array<{ type:
           type: 'text',
           text: `❌ Error al explorar la base de datos: ${error?.message || String(error)}`
         }
-      ]
+      ],
+      isError: true
     };
   }
 };
 
 export const handleGetTableSchema = async (
   tableName: string
-): Promise<{ content: Array<{ type: 'text'; text: string }> }> => {
+): Promise<ToolResult> => {
   try {
     const columns = await dbService.getTableSchema(tableName);
 
@@ -83,7 +85,8 @@ export const handleGetTableSchema = async (
           type: 'text',
           text: `❌ Error al obtener el esquema de la tabla '${tableName}': ${error?.message || String(error)}`
         }
-      ]
+      ],
+      isError: true
     };
   }
 };

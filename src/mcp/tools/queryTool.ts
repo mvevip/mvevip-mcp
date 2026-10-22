@@ -1,15 +1,23 @@
 import { dbService } from '../../services/dbService';
+import { ToolResult } from '../types';
+
+const MAX_OUTPUT_CHARS = 100_000;
 
 export const handleQueryDatabase = async (
   query: string,
   maxRows: number = 50
-): Promise<{ content: Array<{ type: 'text'; text: string }> }> => {
+): Promise<ToolResult> => {
   try {
     const result = await dbService.executeReadOnlyQuery(query, maxRows);
 
-    const jsonSnippet = JSON.stringify(result.rows, null, 2);
+    let jsonSnippet = JSON.stringify(result.rows, null, 2);
+    const outputTruncated = jsonSnippet.length > MAX_OUTPUT_CHARS;
+    if (outputTruncated) jsonSnippet = `${jsonSnippet.slice(0, MAX_OUTPUT_CHARS)}\n... (salida recortada)`;
+    const notes = result.truncated || outputTruncated
+      ? ' — resultado limitado; use filtros o un LIMIT menor para ver el resto'
+      : '';
     const text = [
-      `🔍 [MVEVIP MCP] Consulta ejecutada con éxito (${result.rowCount} registros retornados):`,
+      `🔍 [MVEVIP MCP] Consulta ejecutada con éxito (${result.rowCount} registros retornados${notes}):`,
       '',
       '```json',
       jsonSnippet,
@@ -26,7 +34,8 @@ export const handleQueryDatabase = async (
           type: 'text',
           text: `❌ Error al ejecutar consulta: ${error?.message || String(error)}`
         }
-      ]
+      ],
+      isError: true
     };
   }
 };

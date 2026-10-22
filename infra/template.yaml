@@ -1,0 +1,265 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: MVEVIP Remote MCP Server (Lambda + Function URL BUFFERED)
+
+Parameters:
+  FunctionName:
+    Type: String
+    Default: mvevip-mcp-server
+  McpSigningSecret:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+  McpClientId:
+    Type: String
+    Default: mvevip_claude_connector
+  DbHost:
+    Type: String
+  DbPort:
+    Type: String
+    Default: '3306'
+  DbUser:
+    Type: String
+  DbPassword:
+    Type: String
+    NoEcho: true
+  DbName:
+    Type: String
+  AuthDbName:
+    Type: String
+    Default: mvevip_mcp_auth
+    Description: Base de datos de autenticación (mismo RDS). Debe existir; el esquema se crea solo.
+  AuthDbUser:
+    Type: String
+    Description: Usuario con ALL sobre AuthDbName únicamente
+  AuthDbPassword:
+    Type: String
+    NoEcho: true
+  MailFrom:
+    Type: String
+    Default: 'MVEVIP <no-reply@mvevip.com>'
+  SesDomain:
+    Type: String
+    Default: mvevip.com
+  CreateSesIdentity:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: 'false si el dominio ya está verificado en SES (us-west-2)'
+  DomainName:
+    Type: String
+    Default: mcp.mvevip.com
+  CertificateArn:
+    Type: String
+    Default: ''
+    Description: Certificado ACM (siempre us-east-1, requisito de CloudFront) para DomainName ya validado. Vacío = solo Function URL (sin dominio propio).
+  OriginVerifySecret:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Secreto compartido CloudFront -> Lambda (obligatorio si hay CertificateArn)
+  DbSsl:
+    Type: String
+    Default: ''
+    AllowedValues: ['', 'rds', 'true']
+  VpcSubnetIds:
+    Type: CommaDelimitedList
+    Default: ''
+    Description: Subnets privadas si la BD solo es accesible desde la VPC (vacío = sin VPC)
+  VpcSecurityGroupIds:
+    Type: CommaDelimitedList
+    Default: ''
+
+Conditions:
+  UseCustomDomain: !Not [!Equals [!Ref CertificateArn, '']]
+  MakeSesIdentity: !Equals [!Ref CreateSesIdentity, 'true']
+  UseVpc: !Not [!Equals [!Join ['', !Ref VpcSubnetIds], '']]
+
+Resources:
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${FunctionName}
+      RetentionInDays: 30
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub ${FunctionName}-exec
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !If
+          - UseVpc
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  SesSendPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub ${FunctionName}-ses-send
+      Roles: [!Ref ExecutionRole]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: [ses:SendEmail]
+            Resource: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/${SesDomain}
+
+  SesIdentity:
+    Type: AWS::SES::EmailIdentity
+    Condition: MakeSesIdentity
+    Properties:
+      EmailIdentity: !Ref SesDomain
+
+  Function:
+    Type: AWS::Lambda::Function
+    DependsOn: LogGroup
+    Properties:
+      FunctionName: !Ref FunctionName
+      Runtime: nodejs24.x
+      Handler: lambda.handler
+      Architectures: [x86_64]
+      MemorySize: 512
+      Timeout: 30
+      Role: !GetAtt ExecutionRole.Arn
+      # El código real lo sube el workflow (aws lambda update-function-code).
+      Code:
+        ZipFile: |
+          exports.handler = async () => ({ statusCode: 503, body: 'pending deploy' });
+      Environment:
+        Variables:
+          NODE_ENV: production
+          TRUST_PROXY_HOPS: '1'
+          MCP_SIGNING_SECRET: !Ref McpSigningSecret
+          MCP_CLIENT_ID: !Ref McpClientId
+          DB_HOST: !Ref DbHost
+          DB_PORT: !Ref DbPort
+          DB_USER: !Ref DbUser
+          DB_PASSWORD: !Ref DbPassword
+          DB_NAME: !Ref DbName
+          DB_SSL: !Ref DbSsl
+          AUTH_DB_NAME: !Ref AuthDbName
+          AUTH_DB_USER: !Ref AuthDbUser
+          AUTH_DB_PASSWORD: !Ref AuthDbPassword
+          MAIL_FROM: !Ref MailFrom
+          MCP_PUBLIC_URL: !If [UseCustomDomain, !Sub 'https://${DomainName}', !Ref 'AWS::NoValue']
+          ORIGIN_VERIFY_SECRET: !If [UseCustomDomain, !Ref OriginVerifySecret, !Ref 'AWS::NoValue']
+          DB_CONNECTION_LIMIT: '2'
+      VpcConfig: !If
+        - UseVpc
+        - SubnetIds: !Ref VpcSubnetIds
+          SecurityGroupIds: !Ref VpcSecurityGroupIds
+        - !Ref AWS::NoValue
+
+  FunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt Function.Arn
+      AuthType: NONE
+      InvokeMode: BUFFERED
+
+  UrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Function
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
+  UrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Function
+      Action: lambda:InvokeFunction
+      Principal: '*'
+      InvokedViaFunctionUrl: true
+
+  OriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Condition: UseCustomDomain
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub ${FunctionName}-origin
+        # Sin Host: la Function URL enruta por su propio Host.
+        HeadersConfig:
+          HeaderBehavior: whitelist
+          Headers:
+            - Authorization
+            - Content-Type
+            - Accept
+            - Origin
+            - mcp-protocol-version
+            - mcp-session-id
+            - CloudFront-Viewer-Address
+        CookiesConfig:
+          CookieBehavior: none
+        QueryStringsConfig:
+          QueryStringBehavior: all
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Condition: UseCustomDomain
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub MVEVIP MCP (${DomainName})
+        Aliases: [!Ref DomainName]
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          AcmCertificateArn: !Ref CertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        Origins:
+          - Id: lambda-url
+            DomainName: !Select [2, !Split ['/', !GetAtt FunctionUrl.FunctionUrl]]
+            CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols: [TLSv1.2]
+              OriginReadTimeout: 30
+            OriginCustomHeaders:
+              - HeaderName: X-Origin-Verify
+                HeaderValue: !Ref OriginVerifySecret
+        DefaultCacheBehavior:
+          TargetOriginId: lambda-url
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad # Managed-CachingDisabled
+          OriginRequestPolicyId: !Ref OriginRequestPolicy
+          Compress: true
+
+Outputs:
+  FunctionUrl:
+    Value: !GetAtt FunctionUrl.FunctionUrl
+  EndpointUrl:
+    Description: URL base para el health check (CloudFront si hay dominio propio)
+    Value: !If [UseCustomDomain, !Sub 'https://${Distribution.DomainName}/', !GetAtt FunctionUrl.FunctionUrl]
+  ConnectorUrl:
+    Description: URL a registrar en Claude / ChatGPT
+    Value: !If [UseCustomDomain, !Sub 'https://${DomainName}/mcp', !Sub '${FunctionUrl.FunctionUrl}mcp']
+  DnsCnameForDomain:
+    Condition: UseCustomDomain
+    Description: Crear CNAME DomainName -> este valor
+    Value: !GetAtt Distribution.DomainName
+  SesDkimName1:
+    Condition: MakeSesIdentity
+    Value: !GetAtt SesIdentity.DkimDNSTokenName1
+  SesDkimValue1:
+    Condition: MakeSesIdentity
+    Value: !GetAtt SesIdentity.DkimDNSTokenValue1
+  SesDkimName2:
+    Condition: MakeSesIdentity
+    Value: !GetAtt SesIdentity.DkimDNSTokenName2
+  SesDkimValue2:
+    Condition: MakeSesIdentity
+    Value: !GetAtt SesIdentity.DkimDNSTokenValue2
+  SesDkimName3:
+    Condition: MakeSesIdentity
+    Value: !GetAtt SesIdentity.DkimDNSTokenName3
+  SesDkimValue3:
+    Condition: MakeSesIdentity
+    Value: !GetAtt SesIdentity.DkimDNSTokenValue3

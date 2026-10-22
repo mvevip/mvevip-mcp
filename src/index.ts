@@ -1,18 +1,23 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { ZodError } from 'zod';
+import { getConfig, isAllowedRedirectUri } from './config';
+import { randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import {
-  getMasterAccessKey,
   signAuthCode,
   verifyAuthCode,
+  verifyPkce,
   generateBearerToken,
   verifyBearerToken,
-  safeCompareStrings
+  hashVerificationCode
 } from './auth/tokenManager';
-import { renderLoginScreen, renderSuccessScreen } from './auth/loginView';
+import { RateLimiter } from './auth/rateLimiter';
+import { verifyPassword, verifyDummyPassword } from './auth/password';
+import { renderLoginScreen, renderCodeScreen } from './auth/loginView';
+import { getStore, getMailer } from './deps';
 import {
   JsonRpcRequest,
-  JsonRpcResponse,
   McpToolDefinition,
   TestDbInputSchema,
   DescribeDatabaseInputSchema,
@@ -25,62 +30,105 @@ import { handleQueryDatabase } from './mcp/tools/queryTool';
 
 dotenv.config();
 
+// Falla en el arranque (y no en la primera petición) si faltan secretos.
+const config = getConfig();
+
 const app = express();
 const port = Number(process.env.PORT) || 6420;
 const host = process.env.HOST || '0.0.0.0';
 
+// Saltos de proxy confiables (Lambda Function URL = 1) para obtener la IP real del cliente.
+app.set('trust proxy', config.trustProxyHops);
+app.disable('x-powered-by');
+
 app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'mcp-version', 'x-claude-request-id']
+  origin: config.allowedOrigins,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'mcp-protocol-version', 'mcp-session-id']
 }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Con CloudFront delante, solo se acepta tráfico que traiga el secreto de origen (la Function URL es pública).
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (config.originVerifySecret) {
+    const provided = Buffer.from(String(req.headers['x-origin-verify'] || ''));
+    const expected = Buffer.from(config.originVerifySecret);
+    if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+  }
+  return next();
+});
 
-// Log estructurado de solicitudes entrantes
-app.use((req: Request, _res: Response, next: NextFunction) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl} | Auth: ${req.headers.authorization ? 'Bearer present' : 'none'}`);
+app.use(express.json({ limit: '100kb' }));
+app.use(express.urlencoded({ extended: false, limit: '20kb' }));
+
+app.use((_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
   next();
 });
+
+// Log de solicitudes: solo método y ruta (sin query string, cabeceras ni cuerpo, que contienen secretos).
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
+
+// Errores de parseo de JSON/urlencoded
+app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
+  if (err && (err.type === 'entity.parse.failed' || err.type === 'entity.too.large')) {
+    return res.status(err.status || 400).json({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: err.type === 'entity.too.large' ? -32600 : -32700, message: 'Solicitud inválida' }
+    });
+  }
+  return next(err);
+});
+
+// IP real del cliente. Detrás de CloudFront (origen verificado) se usa CloudFront-Viewer-Address.
+const clientIp = (req: Request): string => {
+  const viewer = config.originVerifySecret ? String(req.headers['cloudfront-viewer-address'] || '') : '';
+  if (viewer) return viewer.slice(0, viewer.lastIndexOf(':')).replace(/^\[|\]$/g, '') || viewer;
+  return req.ip || 'unknown';
+};
+
+const loginLimiter = new RateLimiter(10, 15 * 60 * 1000); // 10 intentos fallidos / 15 min / IP
+const CODE_TTL_MS = 10 * 60 * 1000;
+const MAX_CODE_ATTEMPTS = 5;
+const MAX_CODES_PER_WINDOW = 3; // códigos enviados por usuario cada 10 min
+const tokenLimiter = new RateLimiter(30, 60 * 1000); // 30 intercambios / min / IP
 
 // ---------------------------------------------------------------------------
 // 1. Health Check
 // ---------------------------------------------------------------------------
 app.get('/health', (_req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    service: 'mvevip-mcp-server',
-    port,
-    uptimeSeconds: Math.floor(process.uptime()),
-    timestamp: new Date().toISOString()
-  });
+  res.json({ status: 'ok', service: 'mvevip-mcp-server' });
 });
 
 // ---------------------------------------------------------------------------
-// 2. Metadatos de Autenticación OAuth 2.0 (RFC 7591 / RFC 9728)
+// 2. Metadatos de Autenticación OAuth 2.0 (RFC 8414 / RFC 9728)
 // ---------------------------------------------------------------------------
 const getBaseUrl = (req: Request): string => {
+  if (config.publicUrl) return config.publicUrl;
   const forwardedProto = req.headers['x-forwarded-proto'];
   const proto = forwardedProto ? String(forwardedProto).split(',')[0].trim() : req.protocol;
-  const hostHeader = req.headers['x-forwarded-host'] || req.headers.host;
-  return `${proto}://${hostHeader}`;
+  return `${proto}://${req.headers.host}`;
 };
 
-const getOauthMetadata = (baseUrl: string) => ({
-  issuer: baseUrl,
-  authorization_endpoint: `${baseUrl}/authorize`,
-  token_endpoint: `${baseUrl}/token`,
-  registration_endpoint: `${baseUrl}/register`,
-  response_types_supported: ['code'],
-  grant_types_supported: ['authorization_code'],
-  token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic', 'none'],
-  code_challenge_methods_supported: ['S256', 'plain'],
-  scopes_supported: ['mcp:all', 'read', 'write']
-});
-
 app.get(['/.well-known/oauth-authorization-server', '/.well-known/openid-configuration'], (req: Request, res: Response) => {
-  res.json(getOauthMetadata(getBaseUrl(req)));
+  const baseUrl = getBaseUrl(req);
+  res.json({
+    issuer: baseUrl,
+    authorization_endpoint: `${baseUrl}/authorize`,
+    token_endpoint: `${baseUrl}/token`,
+    registration_endpoint: `${baseUrl}/register`,
+    response_types_supported: ['code'],
+    grant_types_supported: ['authorization_code'],
+    token_endpoint_auth_methods_supported: ['none'],
+    code_challenge_methods_supported: ['S256'],
+    scopes_supported: ['mcp:all']
+  });
 });
 
 app.get('/.well-known/oauth-protected-resource', (req: Request, res: Response) => {
@@ -94,118 +142,316 @@ app.get('/.well-known/oauth-protected-resource', (req: Request, res: Response) =
 });
 
 // ---------------------------------------------------------------------------
-// 3. Pantalla de Autorización Obligatoria (Login Gate)
+// 3. Autorización obligatoria (Login Gate) con PKCE
 // ---------------------------------------------------------------------------
-app.get('/authorize', (req: Request, res: Response) => {
-  const redirectUri = String(req.query.redirect_uri || '');
-  const state = String(req.query.state || '');
-  const clientId = String(req.query.client_id || 'claude');
+interface AuthorizeParams {
+  clientId: string;
+  redirectUri: string;
+  state: string;
+  codeChallenge: string;
+}
 
-  // Si no se especifica redirect_uri, usar callback oficial de Claude
-  const finalRedirectUri = redirectUri || 'https://claude.ai/api/mcp/auth_callback';
+const noStore = (res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Pragma', 'no-cache');
+};
 
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-  res.send(renderLoginScreen({
+const str = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+/** Valida los parámetros OAuth. Devuelve un mensaje de error o los parámetros limpios. */
+const parseAuthorizeParams = (source: Record<string, unknown>): AuthorizeParams | string => {
+  const clientId = str(source.client_id);
+  const redirectUri = str(source.redirect_uri);
+  const state = str(source.state);
+  const codeChallenge = str(source.code_challenge);
+
+  if (clientId !== config.clientId) return 'client_id inválido.';
+  if (!redirectUri || !isAllowedRedirectUri(redirectUri)) return 'redirect_uri no permitido.';
+  if (!state) return 'Falta el parámetro state.';
+  if (!/^[A-Za-z0-9\-_]{43}$/.test(codeChallenge)) return 'Falta un code_challenge PKCE (S256) válido.';
+  return { clientId, redirectUri, state, codeChallenge };
+};
+
+const sendAuthorizeError = (res: Response, message: string) => {
+  noStore(res);
+  res.status(400).type('text/plain').send(`Solicitud de autorización inválida: ${message}`);
+};
+
+const securePage = (res: Response, status: number, html: string) => {
+  noStore(res);
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+  res.status(status).type('text/html; charset=utf-8').send(html);
+};
+
+const sendLoginScreen = (res: Response, params: AuthorizeParams, status = 200, error?: string) =>
+  securePage(res, status, renderLoginScreen({
     actionPath: '/authorize',
-    redirectUri: finalRedirectUri,
-    state,
-    clientId
+    redirectUri: params.redirectUri,
+    state: params.state,
+    clientId: params.clientId,
+    codeChallenge: params.codeChallenge,
+    error
   }));
+
+const sendCodeScreen = (res: Response, challengeId: string, email: string, status = 200, error?: string) =>
+  securePage(res, status, renderCodeScreen({
+    actionPath: '/authorize',
+    challengeId,
+    maskedEmail: maskEmail(email),
+    error
+  }));
+
+const maskEmail = (email: string): string => {
+  const [local, domain] = email.split('@');
+  return `${local.slice(0, 1)}***@${domain}`;
+};
+
+app.get('/authorize', (req: Request, res: Response) => {
+  if (str(req.query.response_type) !== 'code') {
+    return sendAuthorizeError(res, 'response_type debe ser "code".');
+  }
+  if (str(req.query.code_challenge_method) !== 'S256') {
+    return sendAuthorizeError(res, 'code_challenge_method debe ser "S256".');
+  }
+  const params = parseAuthorizeParams(req.query as Record<string, unknown>);
+  if (typeof params === 'string') return sendAuthorizeError(res, params);
+  return sendLoginScreen(res, params);
 });
 
-app.post('/authorize', (req: Request, res: Response) => {
-  const { access_key, redirect_uri, state, client_id } = req.body;
-  const masterKey = getMasterAccessKey();
+const INVALID_CREDENTIALS = 'Usuario o contraseña incorrectos, o cuenta bloqueada temporalmente.';
 
-  if (!safeCompareStrings(String(access_key || '').trim(), masterKey.trim())) {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.status(401).send(renderLoginScreen({
-      actionPath: '/authorize',
-      redirectUri: String(redirect_uri || 'https://claude.ai/api/mcp/auth_callback'),
-      state: String(state || ''),
-      clientId: String(client_id || 'claude'),
-      error: 'Clave de autorización corporativa incorrecta. Verifique la clave en el archivo .env.'
-    }));
+// Paso 1: usuario + contraseña -> se envía un código por correo
+const handleLogin = async (req: Request, res: Response) => {
+  const body = req.body as Record<string, unknown>;
+  const params = parseAuthorizeParams(body);
+  if (typeof params === 'string') return sendAuthorizeError(res, params);
+
+  const ip = clientIp(req);
+  const retryAfter = loginLimiter.retryAfterSeconds(ip);
+  if (retryAfter > 0) {
+    res.setHeader('Retry-After', String(retryAfter));
+    return sendLoginScreen(res, params, 429, 'Demasiados intentos fallidos. Intente de nuevo más tarde.');
   }
 
-  // Generar código temporal firmado con HMAC
-  const code = signAuthCode(masterKey, String(client_id || 'claude'));
+  const store = getStore();
+  const username = str(body.username).trim().toLowerCase().slice(0, 64);
+  const password = str(body.password).slice(0, 256);
+  const user = username && password ? await store.findUserByUsername(username) : null;
+  const locked = !!user && user.lockedUntil > Date.now();
 
-  // Si no hay state (el usuario ingresó manualmente en el navegador para probar)
-  if (!state || String(state).trim() === '') {
-    console.log('[AUTH] Prueba manual exitosa en navegador (sin state). Mostrando pantalla de confirmación.');
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(renderSuccessScreen(code));
+  let valid = false;
+  if (user && user.isActive && !locked) {
+    valid = await verifyPassword(password, user.passwordHash);
+    if (!valid) await store.recordLoginFailure(user.id);
+  } else {
+    await verifyDummyPassword(password); // mismo costo de tiempo: no revela si el usuario existe
   }
 
-  const targetUrl = new URL(String(redirect_uri || 'https://claude.ai/api/mcp/auth_callback'));
+  if (!user || !valid) {
+    loginLimiter.record(ip);
+    console.warn('[AUTH] Inicio de sesión fallido.');
+    return sendLoginScreen(res, params, 401, INVALID_CREDENTIALS);
+  }
+
+  if ((await store.countRecentChallenges(user.id, Date.now() - CODE_TTL_MS)) >= MAX_CODES_PER_WINDOW) {
+    return sendLoginScreen(res, params, 429, 'Ya se enviaron varios códigos. Espere unos minutos e intente de nuevo.');
+  }
+
+  const challengeId = randomBytes(16).toString('hex');
+  const code = String(randomInt(100000, 1000000));
+  await store.createChallenge({
+    id: challengeId,
+    userId: user.id,
+    codeHash: hashVerificationCode(config.signingSecret, challengeId, code),
+    expiresAt: Date.now() + CODE_TTL_MS,
+    clientId: params.clientId,
+    redirectUri: params.redirectUri,
+    state: params.state,
+    codeChallenge: params.codeChallenge
+  });
+
+  try {
+    await getMailer().sendVerificationCode(user.email, code);
+  } catch (err: any) {
+    console.error('[MAIL] Error enviando el código:', err?.name || err?.message);
+    return sendLoginScreen(res, params, 502, 'No se pudo enviar el correo de verificación. Contacte al administrador.');
+  }
+
+  console.log(`[AUTH] Código de verificación enviado (usuario ${user.id}).`);
+  return sendCodeScreen(res, challengeId, user.email);
+};
+
+// Paso 2: código del correo -> código OAuth y redirección
+const handleVerify = async (req: Request, res: Response) => {
+  const body = req.body as Record<string, unknown>;
+  const store = getStore();
+  const challengeId = str(body.challenge_id);
+  const ip = clientIp(req);
+
+  const retryAfter = loginLimiter.retryAfterSeconds(ip);
+  if (retryAfter > 0) {
+    res.setHeader('Retry-After', String(retryAfter));
+    return sendAuthorizeError(res, 'Demasiados intentos fallidos. Intente de nuevo más tarde.');
+  }
+
+  const challenge = /^[a-f0-9]{32}$/.test(challengeId) ? await store.getChallenge(challengeId) : null;
+  if (!challenge) {
+    loginLimiter.record(ip);
+    return sendAuthorizeError(res, 'La verificación expiró o no es válida. Vuelva a iniciar el proceso desde Claude o ChatGPT.');
+  }
+
+  const restart = (message: string) =>
+    sendLoginScreen(res, {
+      clientId: challenge.clientId,
+      redirectUri: challenge.redirectUri,
+      state: challenge.state,
+      codeChallenge: challenge.codeChallenge
+    }, 400, message);
+
+  if (challenge.consumed || Date.now() > challenge.expiresAt || challenge.attempts >= MAX_CODE_ATTEMPTS) {
+    return restart('El código expiró o superó los intentos permitidos. Inicie sesión nuevamente.');
+  }
+
+  const user = await store.findUserById(challenge.userId);
+  if (!user || !user.isActive) return restart(INVALID_CREDENTIALS);
+
+  const expected = Buffer.from(challenge.codeHash);
+  const provided = Buffer.from(hashVerificationCode(config.signingSecret, challenge.id, str(body.code).trim()));
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    await store.incrementChallengeAttempts(challenge.id);
+    loginLimiter.record(ip);
+    return sendCodeScreen(res, challenge.id, user.email, 401, 'Código incorrecto.');
+  }
+
+  if (!(await store.consumeChallenge(challenge.id))) {
+    return restart('El código ya fue utilizado. Inicie sesión nuevamente.');
+  }
+  await store.recordLoginSuccess(user.id);
+  loginLimiter.reset(ip);
+
+  const code = signAuthCode(config.signingSecret, user.id, challenge.clientId, challenge.redirectUri, challenge.codeChallenge);
+  const targetUrl = new URL(challenge.redirectUri);
   targetUrl.searchParams.set('code', code);
-  targetUrl.searchParams.set('state', String(state));
+  targetUrl.searchParams.set('state', challenge.state);
 
-  console.log(`[AUTH] Autorización concedida exitosamente para client_id: ${client_id || 'claude'} con state.`);
+  console.log(`[AUTH] Autorización concedida (usuario ${user.id}).`);
+  noStore(res);
   return res.redirect(targetUrl.toString());
+};
+
+app.post('/authorize', async (req: Request, res: Response) => {
+  try {
+    return str(req.body?.step) === 'verify' ? await handleVerify(req, res) : await handleLogin(req, res);
+  } catch (err: any) {
+    console.error('[AUTH] Error en /authorize:', err?.message || err);
+    return sendAuthorizeError(res, 'Error interno. Intente nuevamente.');
+  }
 });
 
-// Emisión del Token Bearer a Claude
+// Intercambio del código por el Bearer token
 app.post('/token', (req: Request, res: Response) => {
-  const { code } = req.body;
-  const masterKey = getMasterAccessKey();
+  noStore(res);
+  const body = (req.body || {}) as Record<string, unknown>;
+  const oauthError = (status: number, error: string, description: string) =>
+    res.status(status).json({ error, error_description: description });
 
-  if (!code || !verifyAuthCode(String(code), masterKey)) {
-    return res.status(400).json({
-      error: 'invalid_grant',
-      error_description: 'El código de autorización es inválido o ha expirado (TTL: 5 min).'
-    });
+  const ip = clientIp(req);
+  if (tokenLimiter.retryAfterSeconds(ip) > 0) {
+    return oauthError(429, 'slow_down', 'Demasiadas solicitudes.');
+  }
+  tokenLimiter.record(ip);
+
+  if (str(body.grant_type) !== 'authorization_code') {
+    return oauthError(400, 'unsupported_grant_type', 'Solo se soporta authorization_code.');
   }
 
-  const accessToken = generateBearerToken(masterKey);
-  console.log('[AUTH] Token de acceso Bearer emitido exitosamente a Claude.');
+  const payload = verifyAuthCode(str(body.code), config.signingSecret);
+  if (!payload) {
+    return oauthError(400, 'invalid_grant', 'El código de autorización es inválido o ha expirado.');
+  }
+  if (body.client_id !== undefined && str(body.client_id) !== payload.cid) {
+    return oauthError(400, 'invalid_grant', 'El código no corresponde a este client_id.');
+  }
+  if (str(body.redirect_uri) !== payload.uri) {
+    return oauthError(400, 'invalid_grant', 'redirect_uri no coincide con el de la autorización.');
+  }
+  if (!verifyPkce(str(body.code_verifier), payload.chl)) {
+    return oauthError(400, 'invalid_grant', 'code_verifier PKCE inválido.');
+  }
 
-  res.json({
-    access_token: accessToken,
+  console.log('[AUTH] Token de acceso emitido.');
+  return res.json({
+    access_token: generateBearerToken(config.signingSecret, payload.sub),
     token_type: 'Bearer',
     expires_in: 2592000, // 30 días
     scope: 'mcp:all'
   });
 });
 
-app.post('/register', (_req: Request, res: Response) => {
-  res.status(201).json({
-    client_id: 'mvevip_claude_connector',
-    client_secret: 'mvevip_client_secret_token',
+// Registro dinámico de clientes: cliente público (sin secreto) y solo redirect_uris permitidos.
+app.post('/register', (req: Request, res: Response) => {
+  const requested: unknown = req.body?.redirect_uris;
+  const redirectUris = Array.isArray(requested) ? requested.map(String) : [];
+  if (redirectUris.length === 0 || !redirectUris.every(isAllowedRedirectUri)) {
+    return res.status(400).json({
+      error: 'invalid_redirect_uri',
+      error_description: 'redirect_uris ausente o no permitido.'
+    });
+  }
+  return res.status(201).json({
+    client_id: config.clientId,
     client_name: 'MVEVIP Claude Connector',
-    redirect_uris: ['https://claude.ai/api/mcp/auth_callback']
+    redirect_uris: redirectUris,
+    grant_types: ['authorization_code'],
+    response_types: ['code'],
+    token_endpoint_auth_method: 'none'
   });
 });
 
 // ---------------------------------------------------------------------------
-// 4. Middleware de Seguridad para /mcp
+// 4. Middleware de Seguridad para /mcp (todas las llamadas requieren Bearer token)
 // ---------------------------------------------------------------------------
-const authenticateMcp = (req: Request, res: Response, next: NextFunction) => {
-  const masterKey = getMasterAccessKey();
-  const authHeader = req.headers.authorization;
+const userCache = new Map<number, number>(); // userId -> expira (ms) de la comprobación "usuario activo"
+const USER_CHECK_TTL_MS = 60 * 1000;
 
-  // Si Claude hace una verificación preliminar (OPTIONS o probe sin token pero con initialize)
-  // Claude envía initialize en la primera conexión antes de tener el token si usa flujo manual.
-  // Sin embargo, cuando se configura OAuth, Claude envía el token en cada llamada.
-  if (authHeader && verifyBearerToken(authHeader, masterKey)) {
-    return next();
-  }
+const authenticateMcp = async (req: Request, res: Response, next: NextFunction) => {
+  const unauthorized = () => {
+    res.setHeader(
+      'WWW-Authenticate',
+      `Bearer resource_metadata="${getBaseUrl(req)}/.well-known/oauth-protected-resource"`
+    );
+    return res.status(401).json({
+      jsonrpc: '2.0',
+      id: null,
+      error: { code: -32001, message: 'No autorizado. Complete la autorización e incluya el Bearer token.' }
+    });
+  };
 
-  // Para permitir la sonda inicial de descubrimiento si Claude aún no ha obtenido el token
-  const body = req.body as JsonRpcRequest;
-  if (body && (body.method === 'initialize' || body.method === 'ping')) {
-    return next();
-  }
+  const token = verifyBearerToken(req.headers.authorization, config.signingSecret);
+  if (!token) return unauthorized();
 
-  return res.status(401).json({
-    jsonrpc: '2.0',
-    id: body?.id || null,
-    error: {
-      code: -32000,
-      message: 'No autorizado. Debe completar la autorización en /authorize e incluir el Bearer token.'
+  // Un usuario deshabilitado pierde el acceso en máximo 60 s, aunque su token siga vigente.
+  if ((userCache.get(token.userId) ?? 0) < Date.now()) {
+    try {
+      const user = await getStore().findUserById(token.userId);
+      if (!user || !user.isActive) {
+        userCache.delete(token.userId);
+        return unauthorized();
+      }
+      userCache.set(token.userId, Date.now() + USER_CHECK_TTL_MS);
+    } catch (err: any) {
+      console.error('[AUTH] No se pudo validar al usuario:', err?.message || err);
+      return res.status(503).json({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: -32002, message: 'Servicio de autenticación no disponible.' }
+      });
     }
-  });
+  }
+
+  (req as any).userId = token.userId;
+  return next();
 };
 
 // ---------------------------------------------------------------------------
@@ -265,121 +511,91 @@ const MCP_TOOLS: McpToolDefinition[] = [
 // ---------------------------------------------------------------------------
 // 6. Endpoint Stateless MCP JSON-RPC (/mcp)
 // ---------------------------------------------------------------------------
+const SUPPORTED_PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
+
+app.get('/mcp', (_req: Request, res: Response) => {
+  res.setHeader('Allow', 'POST');
+  res.status(405).json({ error: 'Method Not Allowed' });
+});
+
 app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
   const body = req.body as JsonRpcRequest;
 
-  if (!body || body.jsonrpc !== '2.0') {
+  if (!body || Array.isArray(body) || body.jsonrpc !== '2.0' || typeof body.method !== 'string') {
     return res.status(400).json({
       jsonrpc: '2.0',
       id: null,
-      error: { code: -32600, message: 'Invalid Request: se requiere jsonrpc 2.0' }
+      error: { code: -32600, message: 'Invalid Request: se requiere un mensaje JSON-RPC 2.0' }
     });
   }
 
   const { id, method, params } = body;
+  const rpcError = (code: number, message: string) => res.json({ jsonrpc: '2.0', id: id ?? null, error: { code, message } });
+  const rpcResult = (result: unknown) => res.json({ jsonrpc: '2.0', id, result });
+
+  // Las notificaciones (sin id) no tienen respuesta
+  if (id === undefined || id === null) {
+    return res.status(202).end();
+  }
 
   try {
     switch (method) {
       case 'initialize': {
-        const response: JsonRpcResponse = {
-          jsonrpc: '2.0',
-          id,
-          result: {
-            protocolVersion: '2024-11-05',
-            capabilities: {
-              tools: { listChanged: false }
-            },
-            serverInfo: {
-              name: 'mvevip-mcp-server',
-              version: '1.0.0'
-            }
-          }
-        };
-        return res.json(response);
+        const requested = String(params?.protocolVersion || '');
+        return rpcResult({
+          protocolVersion: SUPPORTED_PROTOCOL_VERSIONS.includes(requested) ? requested : SUPPORTED_PROTOCOL_VERSIONS[0],
+          capabilities: { tools: { listChanged: false } },
+          serverInfo: { name: 'mvevip-mcp-server', version: '1.0.0' }
+        });
       }
 
-      case 'notifications/initialized': {
-        // Notificación de confirmación enviada por Claude tras initialize
-        return res.status(200).send();
-      }
+      case 'ping':
+        return rpcResult({});
 
-      case 'ping': {
-        return res.json({ jsonrpc: '2.0', id, result: {} });
-      }
-
-      case 'tools/list': {
-        const response: JsonRpcResponse = {
-          jsonrpc: '2.0',
-          id,
-          result: {
-            tools: MCP_TOOLS
-          }
-        };
-        return res.json(response);
-      }
+      case 'tools/list':
+        return rpcResult({ tools: MCP_TOOLS });
 
       case 'tools/call': {
         const toolName = params?.name;
         const toolArgs = params?.arguments || {};
-
-        console.log(`[TOOL_CALL] Invocando herramienta: ${toolName}`, toolArgs);
+        console.log(`[TOOL_CALL] user=${(req as any).userId} tool=${String(toolName)}`);
 
         switch (toolName) {
-          case 'test_db_connection': {
+          case 'test_db_connection':
             TestDbInputSchema.parse(toolArgs);
-            const toolResult = await handleTestDbConnection();
-            return res.json({ jsonrpc: '2.0', id, result: toolResult });
-          }
+            return rpcResult(await handleTestDbConnection());
 
-          case 'describe_database': {
+          case 'describe_database':
             DescribeDatabaseInputSchema.parse(toolArgs);
-            const toolResult = await handleDescribeDatabase();
-            return res.json({ jsonrpc: '2.0', id, result: toolResult });
-          }
+            return rpcResult(await handleDescribeDatabase());
 
           case 'get_table_schema': {
             const parsed = GetTableSchemaInputSchema.parse(toolArgs);
-            const toolResult = await handleGetTableSchema(parsed.tableName);
-            return res.json({ jsonrpc: '2.0', id, result: toolResult });
+            return rpcResult(await handleGetTableSchema(parsed.tableName));
           }
 
           case 'query_database_sample': {
             const parsed = QueryDatabaseInputSchema.parse(toolArgs);
-            const toolResult = await handleQueryDatabase(parsed.query, parsed.maxRows);
-            return res.json({ jsonrpc: '2.0', id, result: toolResult });
+            return rpcResult(await handleQueryDatabase(parsed.query, parsed.maxRows));
           }
 
           default:
-            return res.status(404).json({
-              jsonrpc: '2.0',
-              id,
-              error: {
-                code: -32601,
-                message: `Herramienta desconocida: '${toolName}'`
-              }
-            });
+            return rpcError(-32602, `Herramienta desconocida: '${String(toolName)}'`);
         }
       }
 
       default:
-        return res.status(404).json({
-          jsonrpc: '2.0',
-          id,
-          error: {
-            code: -32601,
-            message: `Método desconocido: '${method}'`
-          }
-        });
+        return rpcError(-32601, `Método desconocido: '${method}'`);
     }
   } catch (error: any) {
-    console.error(`[ERROR] Error procesando método ${method}:`, error);
+    if (error instanceof ZodError) {
+      return rpcError(-32602, `Parámetros inválidos: ${error.issues.map((i) => i.message).join('; ')}`);
+    }
+    console.error(`[ERROR] Error procesando método ${method}:`, error?.message || error);
     return res.status(500).json({
       jsonrpc: '2.0',
       id,
-      error: {
-        code: -32603,
-        message: error?.message || 'Error interno en el servidor MCP'
-      }
+      error: { code: -32603, message: 'Error interno en el servidor MCP' }
     });
   }
 });
@@ -392,7 +608,6 @@ export default app;
 if (process.env.NODE_ENV !== 'test' && !process.env.LAMBDA_TASK_ROOT) {
   app.listen(port, host, () => {
     console.log(`🚀 [MVEVIP MCP] Servidor escuchando en http://${host}:${port}`);
-    console.log(`🔑 Clave de Autorización configurada: [${getMasterAccessKey() ? 'ACTIVA' : 'INACTIVA'}]`);
     console.log(`📡 URL de Conexión para Claude: http://${host === '0.0.0.0' ? 'localhost' : host}:${port}/mcp`);
   });
 }

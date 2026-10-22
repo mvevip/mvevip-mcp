@@ -1,0 +1,140 @@
+name: Deploy to production
+
+# Despliegue manual: Actions > "Deploy to production" > Run workflow
+# (o pedirle a Claude "despliega", que dispara este workflow).
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Rama, tag o SHA a desplegar
+        default: main
+        required: true
+
+permissions:
+  contents: read
+  id-token: write # OIDC hacia AWS
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  STACK_NAME: mvevip-mcp
+  FUNCTION_NAME: mvevip-mcp-server
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run package
+      - run: cd dist-lambda && zip -q -9 ../function.zip lambda.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: function-zip
+          path: function.zip
+          retention-days: 7
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: production # permite exigir aprobación manual en Settings > Environments
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: function-zip
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Infraestructura (CloudFormation)
+        run: |
+          aws cloudformation deploy \
+            --stack-name "$STACK_NAME" \
+            --template-file infra/template.yaml \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              FunctionName="$FUNCTION_NAME" \
+              McpSigningSecret="$MCP_SIGNING_SECRET" \
+              DbHost="$DB_HOST" \
+              DbPort="${DB_PORT:-3306}" \
+              DbUser="$DB_USER" \
+              DbPassword="$DB_PASSWORD" \
+              DbName="$DB_NAME" \
+              DbSsl="${DB_SSL:-}" \
+              AuthDbName="${AUTH_DB_NAME:-mvevip_mcp_auth}" \
+              AuthDbUser="$AUTH_DB_USER" \
+              AuthDbPassword="$AUTH_DB_PASSWORD" \
+              MailFrom="${MAIL_FROM:-MVEVIP <no-reply@mvevip.com>}" \
+              SesDomain="${SES_DOMAIN:-mvevip.com}" \
+              CreateSesIdentity="${CREATE_SES_IDENTITY:-true}" \
+              DomainName="${DOMAIN_NAME:-mcp.mvevip.com}" \
+              CertificateArn="${ACM_CERTIFICATE_ARN:-}" \
+              OriginVerifySecret="${ORIGIN_VERIFY_SECRET:-}" \
+              VpcSubnetIds="${VPC_SUBNET_IDS:-}" \
+              VpcSecurityGroupIds="${VPC_SECURITY_GROUP_IDS:-}"
+        env:
+          MCP_SIGNING_SECRET: ${{ secrets.MCP_SIGNING_SECRET }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          AUTH_DB_USER: ${{ secrets.AUTH_DB_USER }}
+          AUTH_DB_PASSWORD: ${{ secrets.AUTH_DB_PASSWORD }}
+          ORIGIN_VERIFY_SECRET: ${{ secrets.ORIGIN_VERIFY_SECRET }}
+          AUTH_DB_NAME: ${{ vars.AUTH_DB_NAME }}
+          MAIL_FROM: ${{ vars.MAIL_FROM }}
+          SES_DOMAIN: ${{ vars.SES_DOMAIN }}
+          CREATE_SES_IDENTITY: ${{ vars.CREATE_SES_IDENTITY }}
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+          ACM_CERTIFICATE_ARN: ${{ vars.ACM_CERTIFICATE_ARN }}
+          DB_PORT: ${{ vars.DB_PORT }}
+          DB_SSL: ${{ vars.DB_SSL }}
+          VPC_SUBNET_IDS: ${{ vars.VPC_SUBNET_IDS }}
+          VPC_SECURITY_GROUP_IDS: ${{ vars.VPC_SECURITY_GROUP_IDS }}
+
+      - name: Subir código
+        run: |
+          aws lambda update-function-code --function-name "$FUNCTION_NAME" --zip-file fileb://function.zip --output text --query LastModified
+          aws lambda wait function-updated --function-name "$FUNCTION_NAME"
+
+      - name: Verificar despliegue
+        env:
+          DOMAIN_NAME: ${{ vars.DOMAIN_NAME }}
+        run: |
+          out() { aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
+            --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
+          URL=$(out EndpointUrl)
+          CONNECTOR=$(out ConnectorUrl)
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "${URL}health" || true)
+            [ "$code" = "200" ] && break
+            sleep 5
+          done
+          [ "$code" = "200" ] || { echo "Health check falló ($code)"; exit 1; }
+          mcp=$(curl -s -o /dev/null -w '%{http_code}' -X POST "${URL}mcp" -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"ping"}')
+          [ "$mcp" = "401" ] || { echo "/mcp debería exigir autenticación (HTTP $mcp)"; exit 1; }
+          {
+            echo "### Despliegue exitoso"
+            echo "- URL del conector (Claude / ChatGPT): \`${CONNECTOR}\`"
+            echo "- Endpoint de verificación: ${URL}"
+            CNAME=$(out DnsCnameForDomain)
+            [ -n "$CNAME" ] && [ "$CNAME" != "None" ] && echo "- DNS: CNAME \`${DOMAIN_NAME:-mcp.mvevip.com}\` -> \`${CNAME}\`"
+            true
+          } >> "$GITHUB_STEP_SUMMARY"

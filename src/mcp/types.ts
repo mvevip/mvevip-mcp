@@ -18,6 +18,11 @@ export interface JsonRpcResponse {
   };
 }
 
+export interface ToolResult {
+  content: Array<{ type: 'text'; text: string }>;
+  isError?: boolean;
+}
+
 export interface McpToolDefinition {
   name: string;
   description: string;

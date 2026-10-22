@@ -48,9 +48,14 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
   CloudFront `d3enxcswftihjc.cloudfront.net` responde `/health` 200; Function URL directa 403 (protegida). El deploy #2 falló por
   permisos del rol (ya ampliados) y se limpió el stack fallido.
 
+- [x] **Paso 6 – DNS (22-oct):** `mcp.mvevip.com` resuelve a CloudFront, `/health` 200, `/mcp` sin token 401, metadata OAuth OK.
+  Los 3 CNAME DKIM están publicados y correctos; SES (us-west-2) sigue en `DKIM: PENDING` (puede tardar de minutos a horas).
+
 ## SIGUIENTE PASO
-**Paso 6 – DNS** (en el proveedor de mvevip.com): CNAME `mcp` → `d3enxcswftihjc.cloudfront.net` y 3 CNAME DKIM de SES
-(ver outputs del stack `mvevip-mcp`). Luego salir del sandbox de SES (us-west-2) y crear el primer usuario (paso 7).
+**Paso 7 – SES + primer usuario.** (a) Esperar `VerifiedForSendingStatus=True` en SES `mvevip.com` (us-west-2) y pedir acceso a producción;
+mientras tanto verificar `cmino@mvevip.com` como destinatario (sandbox). (b) El USUARIO ejecuta `init` y `create-user` con
+`aws lambda invoke` (comandos en `docs/DEPLOY.md` paso 7; escriben en la BD `mvevip_mcp_auth`, por eso los corre él, no Claude).
+Luego Paso 8: conectar en Claude/ChatGPT y probar `test_db_connection`.
 
 ## (Referencia, Paso 4 ya hecho)
 **Paso 4 – GitHub → Settings → Environments → `production`**: crear variables y secrets (tabla en `docs/DEPLOY.md`).

@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  mvevip-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mvevip_mcp_server
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "${PORT:-6420}:${PORT:-6420}"
+    environment:
+      - PORT=${PORT:-6420}
+      - HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:${PORT:-6420}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3

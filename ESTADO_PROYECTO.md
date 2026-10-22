@@ -39,7 +39,16 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - RDS público (acordado por ahora; la seguridad se resolverá en otro proyecto). **No modificar el RDS**: solo SQL entregado al usuario.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
+- [x] Paso 4 hecho por el usuario (variables/secrets en `production`) y PR #1 fusionado a `main` (`ec5766b`).
+- Deploy #1 falló en `configure-aws-credentials`: la organización emite el `sub` OIDC con IDs
+  (`repo:mvevip@344858672/mvevip-mcp@1430282490:environment:production`). Se actualizó el stack `mvevip-mcp-github-oidc`
+  para aceptar ambos formatos (UPDATE_COMPLETE). Reintentar el deploy.
+
 ## SIGUIENTE PASO
+**Paso 5 – relanzar** Actions > "Deploy to production" (`ref=main`) y revisar el resultado.
+(Pendiente: restringir el environment `production` a la rama `main`, ya indicado por el usuario.)
+
+## (Referencia, Paso 4 ya hecho)
 **Paso 4 – GitHub → Settings → Environments → `production`**: crear variables y secrets (tabla en `docs/DEPLOY.md`).
 Valores ya conocidos: `AWS_DEPLOY_ROLE_ARN=arn:aws:iam::021891594659:role/mvevip-mcp-server-github-deploy`, `AWS_REGION=us-west-2`,
 `ACM_CERTIFICATE_ARN=arn:aws:acm:us-east-1:021891594659:certificate/1dae9056-0687-434c-a4ca-c20c76a9462f`, `DB_SSL=rds`,

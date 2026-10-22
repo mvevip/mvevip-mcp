@@ -7,6 +7,18 @@ Parameters:
   GitHubRepo:
     Type: String
     Default: mvevip/mvevip-mcp
+  GitHubOwner:
+    Type: String
+    Default: mvevip
+  GitHubOwnerId:
+    Type: String
+    Default: '344858672'
+  GitHubRepoName:
+    Type: String
+    Default: mvevip-mcp
+  GitHubRepoId:
+    Type: String
+    Default: '1430282490'
   GitHubEnvironment:
     Type: String
     Default: production
@@ -48,7 +60,11 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
                 # Solo el job del environment "production" de este repositorio
-                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubRepo}:environment:${GitHubEnvironment}
+                # GitHub puede emitir el sub por nombre o, si la organización lo tiene activado, con IDs numéricos
+                # (repo:<owner>@<owner_id>/<repo>@<repo_id>:environment:...). Se aceptan ambos formatos.
+                token.actions.githubusercontent.com:sub:
+                  - !Sub repo:${GitHubRepo}:environment:${GitHubEnvironment}
+                  - !Sub repo:${GitHubOwner}@${GitHubOwnerId}/${GitHubRepoName}@${GitHubRepoId}:environment:${GitHubEnvironment}
       Policies:
         - PolicyName: deploy-mvevip-mcp
           PolicyDocument:

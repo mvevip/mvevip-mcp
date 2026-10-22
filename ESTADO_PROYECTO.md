@@ -29,6 +29,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
   entrega 3 CNAME DKIM; hay que pedir salida del sandbox de SES.
 - ChatGPT y Claude permitidos como clientes OAuth (verificar redirect URIs al conectar).
 
+- [x] **Paso 3 – Rol OIDC creado (22-oct, desde Claude):** stack `mvevip-mcp-github-oidc` en us-west-2, CREATE_COMPLETE.
+
 ## Verificación AWS (22-oct, cuenta 021891594659, usuario admin-cli)
 - No hay nada del MCP desplegado (sin stacks, Lambdas ni CloudFront `mcp.mvevip.com`). SES sin identidades, en sandbox (200/día).
 - **Paso 2 resuelto:** ya existe certificado `*.mvevip.com` ISSUED en us-east-1:
@@ -38,11 +40,13 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 3 – Rol OIDC de GitHub** (usuario o Claude con credenciales del entorno, confirmar antes): desplegar
-`infra/github-oidc-role.yaml` en us-west-2 con `CreateOidcProvider=false` y entregar `DeployRoleArn`.
+**Paso 4 – GitHub → Settings → Environments → `production`**: crear variables y secrets (tabla en `docs/DEPLOY.md`).
+Valores ya conocidos: `AWS_DEPLOY_ROLE_ARN=arn:aws:iam::021891594659:role/mvevip-mcp-server-github-deploy`, `AWS_REGION=us-west-2`,
+`ACM_CERTIFICATE_ARN=arn:aws:acm:us-east-1:021891594659:certificate/1dae9056-0687-434c-a4ca-c20c76a9462f`, `DB_SSL=rds`,
+`DB_HOST=database-mvevip.c98k2yme6fe6.us-west-2.rds.amazonaws.com`, `DB_NAME=vtgsa_ventas`. Sin VPC.
 
 ## Pasos restantes (en orden)
-3. Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.
+3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.
 4. GitHub → Settings → Environments → `production`: variables (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION=us-west-2`,
    `ACM_CERTIFICATE_ARN`, `DB_SSL=rds`, VPC si aplica…) y secrets (`MCP_SIGNING_SECRET`, `ORIGIN_VERIFY_SECRET`,
    `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME=vtgsa_ventas`, `AUTH_DB_USER`, `AUTH_DB_PASSWORD`). Ver tabla en `docs/DEPLOY.md`.

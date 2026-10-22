@@ -5,3 +5,8 @@ dist
 *.zip
 *.log
 referencia
+dist-lambda
+tests
+infra
+.github
+MEMORIA*.md

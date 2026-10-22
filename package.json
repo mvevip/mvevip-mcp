@@ -11,7 +11,9 @@
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
     "docker:logs": "docker-compose logs -f",
-    "test:local": "powershell -ExecutionPolicy Bypass -File scripts/test_local.ps1"
+    "typecheck": "tsc --noEmit",
+    "test": "NODE_ENV=test tsx --test tests/*.test.ts",
+    "package": "node scripts/package-lambda.mjs"
   },
   "keywords": [
     "mcp",
@@ -36,8 +38,13 @@
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
     "@types/node": "^22.13.4",
+    "esbuild": "^0.28.2",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

@@ -3,6 +3,7 @@ export interface LoginViewParams {
   redirectUri: string;
   state: string;
   clientId: string;
+  codeChallenge: string;
   error?: string;
 }
 
@@ -195,6 +196,7 @@ export const renderLoginScreen = (params: LoginViewParams): string => {
       <input type="hidden" name="redirect_uri" value="${esc(params.redirectUri)}">
       <input type="hidden" name="state" value="${esc(params.state)}">
       <input type="hidden" name="client_id" value="${esc(params.clientId)}">
+      <input type="hidden" name="code_challenge" value="${esc(params.codeChallenge)}">
 
       <div class="form-group">
         <label class="label" for="access_key">Clave o Código de Autorización</label>
@@ -221,93 +223,6 @@ export const renderLoginScreen = (params: LoginViewParams): string => {
 
     <div class="footer">
       MVEVIP System © 2026 • Acceso Protegido
-    </div>
-  </div>
-</body>
-</html>`;
-};
-
-export const renderSuccessScreen = (code: string): string => {
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Autorización Exitosa — MVEVIP MCP</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: radial-gradient(circle at 50% 0%, #1e293b 0%, #0b1120 100%);
-      color: #f8fafc;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      margin: 0;
-      padding: 20px;
-    }
-    .container {
-      background: #1e293b;
-      border: 1px solid #334155;
-      border-radius: 16px;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-      width: 100%;
-      max-width: 440px;
-      padding: 36px 32px;
-      text-align: center;
-    }
-    .icon-success {
-      width: 60px;
-      height: 60px;
-      margin: 0 auto 16px;
-      background: rgba(16, 185, 129, 0.15);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #10b981;
-    }
-    h1 { font-size: 24px; margin-bottom: 8px; color: #fff; }
-    p { font-size: 14px; color: #94a3b8; line-height: 1.5; margin-bottom: 20px; }
-    .box {
-      background: #0f172a;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      padding: 12px;
-      font-family: monospace;
-      font-size: 12px;
-      color: #38bdf8;
-      word-break: break-all;
-      margin-bottom: 20px;
-    }
-    .tip {
-      font-size: 13px;
-      background: rgba(2, 132, 199, 0.1);
-      border-left: 3px solid #0284c7;
-      padding: 10px 12px;
-      text-align: left;
-      color: #cbd5e1;
-      border-radius: 4px;
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="icon-success">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-        <path d="M20 6L9 17l-5-5"></path>
-      </svg>
-    </div>
-    <h1>¡Clave Verificada con Éxito!</h1>
-    <p>La clave corporativa es correcta. El conector MCP de MVEVIP está activo y funcionando.</p>
-    
-    <div class="box">
-      <strong>Código generado:</strong><br>${code}
-    </div>
-
-    <div class="tip">
-      ℹ️ <strong>Nota para Claude:</strong> Cuando conectes este MCP desde la interfaz de Claude (Personalizar > Conectores), Claude incluirá su parámetro de sesión automáticamente y la conexión se confirmará de forma inmediata.
     </div>
   </div>
 </body>

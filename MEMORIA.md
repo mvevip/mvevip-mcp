@@ -89,3 +89,17 @@ flowchart TD
 3. **Despliegue a AWS Lambda y Conexión en Claude.ai:**
    * Ejecutar `deploy_aws.ps1` con perfil `marketingvip`.
    * Registrar la Function URL en Claude.ai (**Personalizar > Conectores**).
+
+---
+
+## 4. Actualización 22-oct-2026: Seguridad y CI/CD
+
+* **Seguridad:** `MCP_ACCESS_KEY` y `MCP_SIGNING_SECRET` obligatorias (sin valores por defecto, secreto de firma separado);
+  `/mcp` exige token en todas las llamadas (401 con `WWW-Authenticate`); OAuth con PKCE S256, `redirect_uri` en lista
+  blanca, `client_id` validado, cliente público (sin `client_secret` fijo); límite de intentos de login; CORS restringido;
+  logs sin secretos ni SQL; SQL validado con scrubber (sin multi-sentencia, `INTO OUTFILE`, `SLEEP`, etc.), transacción
+  `READ ONLY`, timeout de 15 s y tope de filas.
+* **MCP:** errores de herramientas con `isError`, `-32602` para parámetros inválidos, 202 en notificaciones.
+* **Pruebas:** `npm test` (40 pruebas: flujo OAuth, PKCE, rate limit, guard SQL). Reemplaza `scripts/test_local.*`.
+* **CI/CD:** `.github/workflows/ci.yml` y `deploy.yml` (manual, OIDC hacia AWS, CloudFormation en `infra/`). Ver `docs/DEPLOY.md`.
+* **Pendiente de configurar por el equipo:** rol OIDC, secrets/variables del environment `production`, usuario MySQL de solo lectura.

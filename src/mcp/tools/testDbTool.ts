@@ -1,6 +1,7 @@
 import { dbService } from '../../services/dbService';
+import { ToolResult } from '../types';
 
-export const handleTestDbConnection = async (): Promise<{ content: Array<{ type: 'text'; text: string }> }> => {
+export const handleTestDbConnection = async (): Promise<ToolResult> => {
   const result = await dbService.testConnection();
 
   if (result.ok) {
@@ -31,7 +32,8 @@ export const handleTestDbConnection = async (): Promise<{ content: Array<{ type:
     ].join('\n');
 
     return {
-      content: [{ type: 'text', text }]
+      content: [{ type: 'text', text }],
+      isError: true
     };
   }
 };

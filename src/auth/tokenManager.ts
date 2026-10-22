@@ -1,98 +1,91 @@
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 
 const AUTH_CODE_TTL_MS = 5 * 60 * 1000; // Códigos de autorización válidos por 5 minutos
 const BEARER_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Tokens válidos por 30 días
+const TOKEN_PREFIX = 'mvevip_';
 
-/**
- * Obtiene la clave maestra requerida en la pantalla de autorización.
- */
-export const getMasterAccessKey = (): string => {
-  return process.env.MCP_ACCESS_KEY || process.env.MCP_LOGIN_PASSWORD || 'mvevip_master_key_2026';
+export interface AuthCodePayload {
+  exp: number;
+  cid: string; // client_id
+  uri: string; // redirect_uri
+  chl: string; // code_challenge (PKCE S256)
+}
+
+const b64 = (value: string): string => Buffer.from(value, 'utf8').toString('base64url');
+
+// La firma incluye el propósito para que un código no pueda usarse como token y viceversa.
+const sign = (secret: string, purpose: 'code' | 'bearer', data: string): string =>
+  createHmac('sha256', secret).update(`${purpose}.${data}`).digest('base64url');
+
+const safeEqual = (a: string, b: string): boolean => {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 };
 
-/**
- * Genera un código de autorización firmado temporal: "<expiryMs>.<client_id>.<hmac>"
- */
-export const signAuthCode = (secret: string, clientId: string = 'claude'): string => {
-  const expiry = Date.now() + AUTH_CODE_TTL_MS;
-  const payload = `${expiry}:${clientId}`;
-  const sig = createHmac('sha256', secret).update(payload).digest('hex');
-  return `${expiry}.${Buffer.from(clientId).toString('base64url')}.${sig}`;
-};
-
-/**
- * Valida un código de autorización firmado
- */
-export const verifyAuthCode = (code: string, secret: string): boolean => {
-  if (!code) return false;
-  const parts = code.split('.');
-  if (parts.length !== 3) return false;
-
-  const [expiryStr, clientIdB64, sig] = parts;
-  const expiry = Number(expiryStr);
-
-  if (!Number.isFinite(expiry) || Date.now() > expiry) {
-    return false;
+const parseSigned = (value: string, secret: string, purpose: 'code' | 'bearer'): any | null => {
+  const parts = value.split('.');
+  if (parts.length !== 2) return null;
+  const [data, sig] = parts;
+  if (!safeEqual(sig, sign(secret, purpose, data))) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf8'));
+    if (!payload || typeof payload.exp !== 'number' || Date.now() > payload.exp) return null;
+    return payload;
+  } catch {
+    return null;
   }
-
-  const clientId = Buffer.from(clientIdB64, 'base64url').toString('utf8');
-  const payload = `${expiry}:${clientId}`;
-  const expectedSig = createHmac('sha256', secret).update(payload).digest('hex');
-
-  const a = Buffer.from(sig, 'utf8');
-  const b = Buffer.from(expectedSig, 'utf8');
-
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
 };
 
 /**
- * Genera un token Bearer para Claude: "mvevip_<expiry>.<sig>"
+ * Genera un código de autorización firmado, ligado al cliente, al redirect_uri y al code_challenge PKCE.
  */
+export const signAuthCode = (secret: string, clientId: string, redirectUri: string, codeChallenge: string): string => {
+  const payload: AuthCodePayload = { exp: Date.now() + AUTH_CODE_TTL_MS, cid: clientId, uri: redirectUri, chl: codeChallenge };
+  const data = b64(JSON.stringify(payload));
+  return `${data}.${sign(secret, 'code', data)}`;
+};
+
+export const verifyAuthCode = (code: string, secret: string): AuthCodePayload | null => {
+  if (!code) return null;
+  const payload = parseSigned(code, secret, 'code');
+  if (!payload || typeof payload.cid !== 'string' || typeof payload.uri !== 'string' || typeof payload.chl !== 'string') {
+    return null;
+  }
+  return payload as AuthCodePayload;
+};
+
+/**
+ * PKCE S256: BASE64URL(SHA256(code_verifier)) debe coincidir con el code_challenge.
+ */
+export const verifyPkce = (codeVerifier: string, codeChallenge: string): boolean => {
+  if (!/^[A-Za-z0-9\-._~]{43,128}$/.test(codeVerifier)) return false;
+  const expected = createHash('sha256').update(codeVerifier).digest('base64url');
+  return safeEqual(expected, codeChallenge);
+};
+
 export const generateBearerToken = (secret: string): string => {
-  const expiry = Date.now() + BEARER_TOKEN_TTL_MS;
-  const payload = `bearer:${expiry}`;
-  const sig = createHmac('sha256', secret).update(payload).digest('hex');
-  return `mvevip_${expiry}.${sig}`;
+  const now = Date.now();
+  const data = b64(JSON.stringify({ iat: now, exp: now + BEARER_TOKEN_TTL_MS }));
+  return `${TOKEN_PREFIX}${data}.${sign(secret, 'bearer', data)}`;
 };
 
 /**
- * Valida un token Bearer enviado en la cabecera Authorization
+ * Valida el valor de la cabecera Authorization ("Bearer mvevip_...").
  */
-export const verifyBearerToken = (token: string, secret: string): boolean => {
-  if (!token) return false;
-
-  const raw = token.startsWith('Bearer ') ? token.slice(7).trim() : token.trim();
-  if (!raw.startsWith('mvevip_')) return false;
-
-  const withoutPrefix = raw.replace('mvevip_', '');
-  const parts = withoutPrefix.split('.');
-  if (parts.length !== 2) return false;
-
-  const [expiryStr, sig] = parts;
-  const expiry = Number(expiryStr);
-
-  if (!Number.isFinite(expiry) || Date.now() > expiry) {
-    return false;
-  }
-
-  const payload = `bearer:${expiry}`;
-  const expectedSig = createHmac('sha256', secret).update(payload).digest('hex');
-
-  const a = Buffer.from(sig, 'utf8');
-  const b = Buffer.from(expectedSig, 'utf8');
-
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+export const verifyBearerToken = (authHeader: string | undefined, secret: string): boolean => {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return false;
+  const raw = authHeader.slice(7).trim();
+  if (!raw.startsWith(TOKEN_PREFIX)) return false;
+  return parseSigned(raw.slice(TOKEN_PREFIX.length), secret, 'bearer') !== null;
 };
 
 /**
- * Valida en tiempo constante dos cadenas de texto
+ * Compara en tiempo constante sin filtrar la longitud de la clave.
  */
 export const safeCompareStrings = (input: string, target: string): boolean => {
   if (!input || !target) return false;
-  const bufA = Buffer.from(input);
-  const bufB = Buffer.from(target);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
+  const hash = (v: string) => createHash('sha256').update(v).digest();
+  return timingSafeEqual(hash(input), hash(target));
 };

@@ -13,7 +13,7 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 
 ## Hecho
 - [x] Código: seguridad endurecida, OAuth 2.0 + PKCE, login usuario/contraseña + código de 6 dígitos por correo (SES),
-      BD de autenticación, guard SQL de solo lectura, 76 pruebas (`npm test`), build y bundle Lambda OK.
+      BD de autenticación, guard SQL de solo lectura, 77 pruebas (`npm test`), build y bundle Lambda OK.
 - [x] CI (`.github/workflows/ci.yml`) y deploy manual (`deploy.yml`, OIDC → CloudFormation `infra/template.yaml`).
 - [x] **Paso 1 – BD (ejecutado por el usuario en el RDS y verificado):**
       - Usuario `mcp_ro` con SOLO `SELECT` sobre la base de negocio **`vtgsa_ventas`** → secret `DB_NAME=vtgsa_ventas`, `DB_USER=mcp_ro`.
@@ -38,7 +38,13 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
-- [x] **Paso 14a – Herramienta `asistencia` escrita (30-oct, sin desplegar):** `src/mcp/tools/asistenciaTool.ts`, base `mvevip_biometrico` (mismo servidor que `vtgsa_ventas`).
+- [x] **Paso 15a – `asistencia` reescrita según `biometrico.php` (30-oct, sin desplegar):** el campo `punch` NO es confiable (punch 0: 11 168 entradas y 2 516 salidas por hora; punch 1: 2 553 entradas y 10 952 salidas)
+      → la entrada se decide por la hora del día: antes del punto medio entre `hora_entrada` y `hora_salida` del departamento (como el PHP). Solo entradas (las salidas nunca se consideran), solo lunes a viernes
+      (`WEEKDAY < 5`), atraso solo en la primera entrada del día. Departamentos: todos con entrada 09:45; salidas 18:00–19:00 (3 = CALL CENTER 18:30). Empleados sin departamento (hoy 0) se incluyen como
+      SIN DEPARTAMENTO con la jornada estándar 09:45–18:00 (el PHP usaba 08:00–17:00). Nuevo filtro `dispositivo`; si un filtro no encuentra nada devuelve los departamentos y dispositivos válidos.
+      Ya no se lee `punch`. Feriados NO se excluyen (pendiente de confirmar). Horas trabajadas: pendiente de aclarar. 77 pruebas. Requiere `hora_salida` (GRANT pendiente).
+- [x] **Paso 14b – `asistencia` desplegado (30-oct):** GRANT por columna aplicado por el usuario, PR #8 fusionado y deploy #12 exitoso; sin duplicados en `mve_usuarios.user_id_biometrico`.
+- [x] **Paso 14a – Herramienta `asistencia` escrita (30-oct):** `src/mcp/tools/asistenciaTool.ts`, base `mvevip_biometrico` (mismo servidor que `vtgsa_ventas`).
       Entradas = `punch = 0` (0: 13 684 marcaciones, 1: 13 505, 5: 65, 4: 17). Hora esperada = `pico_placa_hora` si `pico_placa_dia = WEEKDAY(ts)+1`, si no `hora_entrada` del departamento
       (hoy 09:45 en los 7 departamentos; 3 = CALL CENTER). Atraso = minutos tras la hora esperada, solo en la PRIMERA marcación del día por empleado (abril/depto 3: 456 marcaciones vs 441 días-empleado);
       `tolerancia_minutos` opcional (0 por defecto). Parámetros: mes/anio o fecha_desde/fecha_hasta, departamento y empleado (búsqueda parcial con valores enlazados `?`), agrupar_por
@@ -93,8 +99,9 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 14b – GRANT por columna sobre `mvevip_biometrico` (lo ejecuta el usuario; script en el chat) + decidir acceso a `asistencia`** (dato sensible de RR. HH.: ¿todos los usuarios del MCP o solo algunos?).
-Luego PR + merge a `main` + "Deploy to production" (solo si el usuario lo pide) y probar en el chat. Referencia (abril 2026, departamento CALL CENTER = 3): 456 marcaciones (punch 0) · 441 días-empleado.
+**Paso 15b – El usuario ejecuta `GRANT SELECT (hora_salida) ON mvevip_biometrico.mve_departamentos TO 'mcp_ro'@'%'` (la nueva `asistencia` la necesita) y aclara qué son las "horas trabajadas"**
+(sin usar marcaciones de salida no se pueden calcular). Luego PR + merge a `main` + "Deploy to production" (solo si lo pide) y probar en el chat.
+IMPORTANTE: desplegar ANTES del GRANT hace que `asistencia` falle por permiso de columna.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.

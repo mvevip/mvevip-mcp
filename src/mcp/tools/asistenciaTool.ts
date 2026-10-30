@@ -4,6 +4,9 @@ import { REPORT_TIMEZONE, resolveDateRange } from './dates';
 
 const MAX_OUTPUT_CHARS = 100_000;
 const BIO = 'mvevip_biometrico';
+/** Jornada estándar (la de todos los departamentos hoy) para empleados sin departamento. */
+const DEFAULT_ENTRADA = '09:45:00';
+const DEFAULT_SALIDA = '18:00:00';
 
 export const ASISTENCIA_GROUPS = ['ninguno', 'empleado', 'dia', 'departamento'] as const;
 
@@ -27,6 +30,7 @@ export interface AsistenciaParams {
   fecha_hasta?: string;
   departamento?: string;
   empleado?: string;
+  dispositivo?: string;
   agrupar_por?: (typeof ASISTENCIA_GROUPS)[number];
   todas_las_marcaciones?: boolean;
   tolerancia_minutos?: number;
@@ -54,36 +58,40 @@ const cleanFilter = (v: string | undefined, label: string): string | undefined =
 };
 
 /**
- * Marcaciones de entrada (punch = 0) del biométrico. Hora esperada: la de pico y placa si el día de la marcación es el día
- * de pico y placa del empleado; si no, la hora de entrada de su departamento. Atraso = minutos después de la hora esperada
- * (0 si llegó a tiempo). Los atrasos se cuentan solo en la primera marcación del día de cada empleado.
+ * Entradas del biométrico. El campo punch del dispositivo NO se usa (no es confiable): una marcación es entrada si su hora cae
+ * antes del punto medio entre la hora de entrada y la de salida del departamento del empleado; las salidas nunca se consideran.
+ * Solo lunes a viernes. Hora esperada: la de pico y placa si ese día corresponde, si no la de entrada del departamento
+ * (jornada estándar si no tiene departamento). Atraso = minutos después de la hora esperada, solo en la primera entrada del día.
  * Fechas y tolerancia están validadas; los textos de filtro viajan como valores enlazados (?).
  */
-const buildCte = (desde: string, hasta: string, filters: string): string => `WITH marcas AS (
-  SELECT a.timestamp AS ts, a.user_id_biometrico, a.dispositivo_id,
-    ROW_NUMBER() OVER (PARTITION BY a.user_id_biometrico, DATE(a.timestamp) ORDER BY a.timestamp) AS marca_del_dia
-  FROM ${BIO}.mve_asistencias a
-  WHERE a.punch = 0 AND a.timestamp >= '${desde}' AND a.timestamp < '${hasta}'
-),
-base AS (
-  SELECT m.ts, m.marca_del_dia, m.user_id_biometrico,
-    UPPER(u.nombre) AS empleado, d.nombre AS departamento, disp.nombre AS dispositivo,
+const buildCte = (desde: string, hasta: string, filters: string): string => `WITH base AS (
+  SELECT a.timestamp AS ts, a.user_id_biometrico,
+    UPPER(u.nombre) AS empleado,
+    COALESCE(d.nombre, 'SIN DEPARTAMENTO') AS departamento,
+    disp.nombre AS dispositivo,
     CASE
-      WHEN u.pico_placa_dia = WEEKDAY(m.ts) + 1 THEN u.pico_placa_hora
-      WHEN d.id IS NOT NULL THEN d.hora_entrada
-      ELSE NULL
-    END AS esperada
-  FROM marcas m
-  JOIN ${BIO}.mve_usuarios u ON u.user_id_biometrico = m.user_id_biometrico
+      WHEN u.pico_placa_dia = WEEKDAY(a.timestamp) + 1 THEN COALESCE(u.pico_placa_hora, COALESCE(d.hora_entrada, '${DEFAULT_ENTRADA}'))
+      ELSE COALESCE(d.hora_entrada, '${DEFAULT_ENTRADA}')
+    END AS esperada,
+    TIME_TO_SEC(TIME(a.timestamp)) / 60 <= (
+      TIME_TO_SEC(COALESCE(d.hora_entrada, '${DEFAULT_ENTRADA}')) / 60 + TIME_TO_SEC(COALESCE(d.hora_salida, '${DEFAULT_SALIDA}')) / 60
+    ) / 2 AS es_entrada
+  FROM ${BIO}.mve_asistencias a
+  JOIN ${BIO}.mve_usuarios u ON u.user_id_biometrico = a.user_id_biometrico
   LEFT JOIN ${BIO}.mve_departamentos d ON d.id = u.departamento_id
-  LEFT JOIN ${BIO}.mve_dispositivos disp ON disp.id = m.dispositivo_id
-  WHERE 1 = 1${filters}
+  LEFT JOIN ${BIO}.mve_dispositivos disp ON disp.id = a.dispositivo_id
+  WHERE a.timestamp >= '${desde}' AND a.timestamp < '${hasta}' AND WEEKDAY(a.timestamp) < 5${filters}
+),
+entradas AS (
+  SELECT ts, user_id_biometrico, empleado, departamento, dispositivo, esperada,
+    ROW_NUMBER() OVER (PARTITION BY user_id_biometrico, DATE(ts) ORDER BY ts) AS marca_del_dia
+  FROM base
+  WHERE es_entrada = 1
 ),
 marcaciones AS (
-  SELECT ts, marca_del_dia, user_id_biometrico, empleado, departamento, dispositivo, esperada,
-    CASE WHEN esperada IS NULL THEN NULL
-      ELSE GREATEST(0, ROUND(TIME_TO_SEC(TIMEDIFF(TIME(ts), esperada)) / 60)) END AS minutos_atraso
-  FROM base
+  SELECT ts, user_id_biometrico, empleado, departamento, dispositivo, esperada, marca_del_dia,
+    GREATEST(0, ROUND(TIME_TO_SEC(TIMEDIFF(TIME(ts), esperada)) / 60)) AS minutos_atraso
+  FROM entradas
 )`;
 
 export const buildAsistenciaQueries = (params: AsistenciaParams, now: Date = new Date()): AsistenciaQueries => {
@@ -105,6 +113,11 @@ export const buildAsistenciaQueries = (params: AsistenciaParams, now: Date = new
     filters += ' AND u.nombre LIKE ?';
     values.push(likePattern(empleado));
   }
+  const dispositivo = cleanFilter(params.dispositivo, 'dispositivo');
+  if (dispositivo) {
+    filters += ' AND disp.nombre LIKE ?';
+    values.push(likePattern(dispositivo));
+  }
   const cte = buildCte(desde, hastaExclusivo, filters);
   const direccion = params.direccion === 'asc' ? 'ASC' : 'DESC';
   const agrupar = params.agrupar_por ?? 'ninguno';
@@ -112,7 +125,7 @@ export const buildAsistenciaQueries = (params: AsistenciaParams, now: Date = new
     throw new Error(`agrupar_por inválido. Opciones: ${ASISTENCIA_GROUPS.join(', ')}`);
   }
 
-  const atrasado = `(minutos_atraso IS NOT NULL AND minutos_atraso > ${tolerancia})`;
+  const atrasado = `(minutos_atraso > ${tolerancia})`;
   const totalsSql = `${cte}
 SELECT COUNT(*) AS marcaciones, CAST(COALESCE(SUM(marca_del_dia = 1), 0) AS SIGNED) AS dias_empleado,
   COUNT(DISTINCT user_id_biometrico) AS empleados,
@@ -151,7 +164,7 @@ ${todas ? '' : 'WHERE marca_del_dia = 1\n'}ORDER BY \`${orden}\` ${direccion}, t
 FROM marcaciones WHERE marca_del_dia = 1 GROUP BY user_id_biometrico, empleado, departamento`,
     dia: `SELECT DATE_FORMAT(ts, '%Y-%m-%d') AS fecha, COUNT(*) AS empleados, ${sumas}
 FROM marcaciones WHERE marca_del_dia = 1 GROUP BY DATE(ts)`,
-    departamento: `SELECT COALESCE(departamento, 'SIN DEPARTAMENTO') AS departamento, COUNT(*) AS dias_con_marcacion, ${sumas}
+    departamento: `SELECT departamento, COUNT(*) AS dias_con_marcacion, ${sumas}
 FROM marcaciones WHERE marca_del_dia = 1 GROUP BY departamento`
   }[agrupar];
   const detailSql = `${cte}
@@ -167,14 +180,29 @@ export const handleAsistencia = async (params: AsistenciaParams): Promise<ToolRe
       dbService.executeReadOnlyQuery(q.detailSql, 500, q.values),
       dbService.executeReadOnlyQuery(q.totalsSql, 1, q.values)
     ]);
+
+    // Si un filtro de departamento o dispositivo no encontró nada, se devuelven los nombres válidos.
+    let catalogos: Record<string, string[]> | undefined;
+    if (detail.rowCount === 0 && (params.departamento?.trim() || params.dispositivo?.trim())) {
+      const [deps, disps] = await Promise.all([
+        dbService.executeReadOnlyQuery(`SELECT nombre FROM ${BIO}.mve_departamentos ORDER BY nombre`, 100),
+        dbService.executeReadOnlyQuery(`SELECT nombre FROM ${BIO}.mve_dispositivos ORDER BY nombre`, 100)
+      ]);
+      catalogos = {
+        departamentos_disponibles: deps.rows.map((r) => r.nombre),
+        dispositivos_disponibles: disps.rows.map((r) => r.nombre)
+      };
+    }
+
     const payload = {
       periodo: { desde: q.desde, hasta_exclusivo: q.hastaExclusivo, zona_horaria: REPORT_TIMEZONE },
-      criterio: `Entradas del biométrico (punch 0). Atraso = minutos después de la hora esperada (pico y placa si corresponde, si no la del departamento); se cuenta solo la primera marcación del día de cada empleado${q.tolerancia ? `, con tolerancia de ${q.tolerancia} min` : ''}.`,
+      criterio: `Solo entradas, de lunes a viernes: una marcación es entrada si su hora cae antes del punto medio entre la hora de entrada y de salida del departamento del empleado (no se usa el campo punch del dispositivo; las salidas nunca se consideran). Atraso = minutos después de la hora esperada (pico y placa si corresponde, si no la del departamento); se cuenta solo la primera entrada del día de cada empleado${q.tolerancia ? `, con tolerancia de ${q.tolerancia} min` : ''}.`,
       agrupado_por: params.agrupar_por ?? 'ninguno',
-      todas_las_marcaciones: !!params.todas_las_marcaciones && (params.agrupar_por ?? 'ninguno') === 'ninguno',
+      todas_las_entradas: !!params.todas_las_marcaciones && (params.agrupar_por ?? 'ninguno') === 'ninguno',
       totales_del_periodo: totals.rows[0],
       filas_devueltas: detail.rowCount,
       filas_recortadas: detail.truncated,
+      ...(catalogos ?? {}),
       filas: detail.rows
     };
     let json = JSON.stringify(payload);

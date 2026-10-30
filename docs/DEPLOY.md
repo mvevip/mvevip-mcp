@@ -89,3 +89,8 @@ el acceso en máximo 60 s. En desarrollo local: `npx tsx scripts/auth-admin.ts c
 - La Function URL directa queda protegida: solo responde si la petición trae el secreto de CloudFront.
 - Los redirect URI permitidos incluyen Claude y ChatGPT; agrega más con `MCP_ALLOWED_REDIRECT_URIS` si hiciera falta.
 - Los scripts `build_zip.ps1` / `deploy_aws.ps1` son del flujo anterior y están obsoletos.
+- **Rutina para publicar un cambio:** PR a `main` → fusionar → Actions > "Deploy to production" (`ref=main`) o pedirle a Claude "crea el PR y despliega". El job repite typecheck y pruebas, actualiza el stack, sube el código y comprueba `/health` y que `/mcp` exija login. Tarda menos de un minuto cuando GitHub asigna runner (a veces queda en cola 10–25 min: esperar, no relanzar).
+- **Herramienta que lee tablas o columnas nuevas:** el usuario debe aplicar antes el `GRANT SELECT` por columna a `mcp_ro`; si se despliega antes, la herramienta falla por permisos (ver `MEMORIA.md`, sección 3).
+- **Un cliente nuevo no logra conectar** (p. ej. ChatGPT): buscar en CloudWatch la línea `[REGISTER] redirect_uri rechazado` y agregar esa URL a la lista de `src/config.ts` (o a `MCP_ALLOWED_REDIRECT_URIS`).
+- **Correos de otro dominio:** SES está en sandbox (AWS denegó producción); solo llegan códigos a `@mvevip.com` o a direcciones verificadas en SES.
+- Tras desplegar una herramienta nueva, el usuario debe quitar y volver a agregar el conector en Claude y ChatGPT para que aparezca.

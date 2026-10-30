@@ -1,116 +1,59 @@
-# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 30-oct-2026)
+# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 30-oct-2026, cierre de sesión)
 
-Servidor MCP remoto (TypeScript/Express/MySQL) para que Claude y ChatGPT consulten la BD de MVEVIP.
-Destino: `https://mcp.mvevip.com/mcp` · AWS **us-west-2** (Lambda, SES, stack) + CloudFront/ACM (us-east-1) · RDS MySQL existente `database-mvevip` (us-west-2, público, sin VPC).
-Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.md`.
+Servidor MCP remoto (TypeScript/Express/MySQL) para que Claude y ChatGPT consulten reportes de MVEVIP (ventas, cuadro de ventas,
+requerimientos y asistencia). Solo lo usan administradores de la empresa con correo `@mvevip.com`.
+
+- **URL del conector:** `https://mcp.mvevip.com/mcp` (OAuth con registro dinámico; funciona en Claude y en ChatGPT).
+- **Infraestructura:** AWS **us-west-2** (Lambda `mvevip-mcp-server`, stack `mvevip-mcp`, SES) + CloudFront con certificado ACM en us-east-1,
+  cuenta `021891594659`. Base de datos: RDS MySQL `database-mvevip` (us-west-2, público, sin VPC; la seguridad de red se resolverá en otro proyecto).
+- **Memoria técnica detallada** (arquitectura, reglas de negocio por herramienta, permisos de BD, trucos de operación): `MEMORIA.md`.
+  **Guía de despliegue y operación:** `docs/DEPLOY.md`. **Reglas para Claude:** `CLAUDE.md`.
 
 ## Reglas de trabajo acordadas con el usuario (cmino@mvevip.com)
-- **Nunca ejecutar nada en la base de datos**: Claude entrega el SQL y el usuario lo ejecuta.
-- No hay nada desplegado en producción todavía (verificado: todo vive solo en el repo).
-- El usuario ejecuta los comandos AWS desde su propio entorno; avanzar **de a un paso** y esperar confirmación.
-- No crear PR salvo que lo pida. Rama de trabajo: `claude/modest-heisenberg-3mvjqy`.
-- Los secretos/contraseñas NO se guardan en el repo (están en el gestor de contraseñas del usuario).
+- **Claude nunca ejecuta SQL ni cambia bases de datos**: entrega el script (consultas de verificación y `GRANT`) y el usuario lo ejecuta y pega los resultados (capturas o `.xlsx`).
+- Avanzar **de a un paso**, esperando la confirmación del usuario.
+- **Solo crear PR cuando el usuario lo pide.** Cuando dice "crea el PR y despliega": crear PR → fusionar (`merge`) → ejecutar el workflow "Deploy to production" con `ref=main` → verificar → actualizar este archivo.
+- Los secretos y contraseñas **no** se guardan en el repo. Las contraseñas generadas de usuarios se entregan una sola vez en el chat y el usuario las guarda en su gestor.
+- Rama de trabajo de la sesión: `claude/festive-thompson-nd74zw` (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
 
-## Hecho
-- [x] Código: seguridad endurecida, OAuth 2.0 + PKCE, login usuario/contraseña + código de 6 dígitos por correo (SES),
-      BD de autenticación, guard SQL de solo lectura, 77 pruebas (`npm test`), build y bundle Lambda OK.
-- [x] CI (`.github/workflows/ci.yml`) y deploy manual (`deploy.yml`, OIDC → CloudFormation `infra/template.yaml`).
-- [x] **Paso 1 – BD (ejecutado por el usuario en el RDS y verificado):**
-      - Usuario `mcp_ro` con SOLO `SELECT` sobre la base de negocio **`vtgsa_ventas`** → secret `DB_NAME=vtgsa_ventas`, `DB_USER=mcp_ro`.
-      - Base `mvevip_mcp_auth` + usuario `mcp_auth` (CREATE, INDEX, SELECT, INSERT, UPDATE, DELETE solo sobre esa base)
-        → secrets `AUTH_DB_USER=mcp_auth`; `AUTH_DB_NAME` por defecto `mvevip_mcp_auth`.
-      - Las contraseñas (`mcp_ro`, `mcp_auth`), `MCP_SIGNING_SECRET` y `ORIGIN_VERIFY_SECRET` fueron generadas en la sesión
-        anterior; el usuario debe tenerlas en su gestor (si se perdieron: generar nuevas y re-ejecutar `ALTER USER` en la BD).
+## Estado actual (todo desplegado en producción)
+Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 
-## Decisiones tomadas
-- Región us-west-2 (decidido 22-oct, junto al RDS). Dominio `mcp.mvevip.com`. DNS en proveedor externo (no Route 53) → CNAME manuales.
-- Usuarios creados solo por un administrador (`aws lambda invoke` con payload `mvevipAdmin`), sin auto-registro.
-- SES: dominio `mvevip.com` NO verificado aún / estado desconocido → el stack lo crea (`CREATE_SES_IDENTITY=true`) y
-  entrega 3 CNAME DKIM; hay que pedir salida del sandbox de SES.
-- ChatGPT y Claude permitidos como clientes OAuth (verificar redirect URIs al conectar).
+| Herramienta | Qué da | Archivo |
+|---|---|---|
+| `reporte_ventas_mes` | Ventas del mes (por fecha de venta): detalle o agrupado por asesor, líder, líder asistente, ciudad, contrato o tipo de contrato; con `incluir_requerimientos` suma requerimientos y comisión neta por asesor | `src/mcp/tools/salesReportTool.ts` |
+| `cuadro_ventas` | El cuadro de la pantalla de la oficina a una fecha: resumen, días laborables, equipos, grupos, líderes por cierres, ventas del día por asesor | `src/mcp/tools/cuadroTool.ts` |
+| `requerimientos` | Devoluciones y reclamos de ventas, contados en el mes en que ingresaron; su valor se descuenta de la comisión | `src/mcp/tools/requerimientosTool.ts` |
+| `asistencia` | Entradas del biométrico y atrasos (lunes a viernes, primera entrada del día, sin salidas); vistas por empleado, día o departamento | `src/mcp/tools/asistenciaTool.ts` |
 
-- [x] **Paso 3 – Rol OIDC creado (22-oct, desde Claude):** stack `mvevip-mcp-github-oidc` en us-west-2, CREATE_COMPLETE.
-- [x] **Paso 5 – Despliegue (workflow #4, 30-oct):** stack `mvevip-mcp` OK en us-west-2; endpoint CloudFront `d3enxcswftihjc.cloudfront.net`.
-- [x] **Paso 6 – DNS y SES (30-oct):** 4 CNAME creados (mcp + 3 DKIM); `https://mcp.mvevip.com/health` = 200; SES `mvevip.com` verificado (DKIM SUCCESS).
-      Solicitud de acceso a producción de SES enviada por Claude (estado PENDING, ~24 h). Mientras tanto SES envía solo a
-      direcciones del dominio verificado `mvevip.com` (sandbox, 200/día).
-- [x] **Paso 7 – Usuario `cmino` creado (30-oct, vía Lambda `mvevipAdmin`):** id 1, correo cmino@mvevip.com. Contraseña generada entregada
-      una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
-- [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
-      (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
-- [x] **Paso 15a – `asistencia` reescrita según `biometrico.php` (30-oct, sin desplegar):** el campo `punch` NO es confiable (punch 0: 11 168 entradas y 2 516 salidas por hora; punch 1: 2 553 entradas y 10 952 salidas)
-      → la entrada se decide por la hora del día: antes del punto medio entre `hora_entrada` y `hora_salida` del departamento (como el PHP). Solo entradas (las salidas nunca se consideran), solo lunes a viernes
-      (`WEEKDAY < 5`), atraso solo en la primera entrada del día. Departamentos: todos con entrada 09:45; salidas 18:00–19:00 (3 = CALL CENTER 18:30). Empleados sin departamento (hoy 0) se incluyen como
-      SIN DEPARTAMENTO con la jornada estándar 09:45–18:00 (el PHP usaba 08:00–17:00). Nuevo filtro `dispositivo`; si un filtro no encuentra nada devuelve los departamentos y dispositivos válidos.
-      Ya no se lee `punch`. Feriados NO se excluyen (pendiente de confirmar). Horas trabajadas: pendiente de aclarar. 77 pruebas. Requiere `hora_salida` (GRANT pendiente).
-- [x] **Paso 14b – `asistencia` desplegado (30-oct):** GRANT por columna aplicado por el usuario, PR #8 fusionado y deploy #12 exitoso; sin duplicados en `mve_usuarios.user_id_biometrico`.
-- [x] **Paso 14a – Herramienta `asistencia` escrita (30-oct):** `src/mcp/tools/asistenciaTool.ts`, base `mvevip_biometrico` (mismo servidor que `vtgsa_ventas`).
-      Entradas = `punch = 0` (0: 13 684 marcaciones, 1: 13 505, 5: 65, 4: 17). Hora esperada = `pico_placa_hora` si `pico_placa_dia = WEEKDAY(ts)+1`, si no `hora_entrada` del departamento
-      (hoy 09:45 en los 7 departamentos; 3 = CALL CENTER). Atraso = minutos tras la hora esperada, solo en la PRIMERA marcación del día por empleado (abril/depto 3: 456 marcaciones vs 441 días-empleado);
-      `tolerancia_minutos` opcional (0 por defecto). Parámetros: mes/anio o fecha_desde/fecha_hasta, departamento y empleado (búsqueda parcial con valores enlazados `?`), agrupar_por
-      (ninguno, empleado, dia, departamento), todas_las_marcaciones, ordenar_por, direccion. No informa ausencias (queda para después). `timestamp` es DATETIME (sin conversión de zona).
-      `dbService.executeReadOnlyQuery` ganó el parámetro `values` (valores enlazados). `resolveDateRange` movido a `dates.ts`. Sin índices nuevos (23 280 filas). 76 pruebas.
-      Requiere GRANT SELECT por columna a `mcp_ro` (mve_asistencias: timestamp, user_id_biometrico, dispositivo_id, punch; mve_usuarios: user_id_biometrico, nombre, departamento_id,
-      pico_placa_dia, pico_placa_hora; mve_departamentos: id, nombre, hora_entrada; mve_dispositivos: id, nombre).
-- [x] **Paso 13b – `requerimientos` desplegado (30-oct):** PR #7 fusionado y deploy #11 exitoso.
-- [x] **Paso 13a – Herramienta `requerimientos` escrita (30-oct):** `src/mcp/tools/requerimientosTool.ts`. Requerimientos = devoluciones y reclamos de ventas de asesores (tabla
-      `requerimientos`). Reglas acordadas: se cuentan siempre en el mes en que se INGRESARON (`fecha_requerimiento`, tipo date), se muestra también `fecha_venta` y `fecha_alta` (hora de registro);
-      su valor se DESCUENTA de la comisión del asesor; el campo `estado` no se usa por ahora. Parámetros: mes, anio, fecha_desde/fecha_hasta (inclusive), agrupar_por (ninguno, asesor), ordenar_por, direccion.
-      `reporte_ventas_mes` ganó `incluir_requerimientos`: por asesor agrega requerimientos_cantidad, requerimientos_valor y comision_neta (= comision_asesor − requerimientos_valor; incluye
-      asesores con requerimientos y sin ventas); con otras agrupaciones solo en los totales. El asesor se resuelve con el mismo nombre de `mve_usuarios` (o `usuarios.usuario_crm`).
-      Utilidades de fechas movidas a `src/mcp/tools/dates.ts`. 71 pruebas. Sin índice en `fecha_requerimiento` (tabla de ~200 filas, no hace falta).
-- [x] **Paso 12b – Limpieza desplegada (30-oct):** PR #6 fusionado y deploy #10 exitoso.
-- [x] **Paso 12a – Limpieza de herramientas (30-oct):** a pedido del usuario se eliminaron `test_db_connection`, `describe_database`, `get_table_schema` y
-      `query_database_sample` (código, esquemas, métodos de `dbService` y pruebas). Quedan solo `reporte_ventas_mes` y `cuadro_ventas`. Ya no hay SQL libre desde el chat.
-      `MEMORIA_SESION.md` y `referencia/` son históricos y siguen mencionándolas.
-- [x] **Paso 11c – Conector en ChatGPT funcionando (30-oct):** confirmado por el usuario tras el deploy #9; la causa era la URL de retorno nueva de ChatGPT y el metadato con sufijo de ruta.
-- [x] **Paso 11b – Desplegado (30-oct):** PR #5 fusionado y deploy #9 exitoso; `/.well-known/oauth-protected-resource/mcp` = 200 y `/register` acepta `https://chatgpt.com/connector/oauth/<id>`.
-- [x] **Paso 11a – Dependencias y compatibilidad con ChatGPT (30-oct):** `npm audit` en 0 (body-parser y qs con `npm audit fix`; zod migrado a v4; el CI debe volver a verde).
-      ChatGPT (registro dinámico, DCR) fallaba al crear el conector: los registros mostraron que pedía `/.well-known/oauth-protected-resource/mcp` (404) y llamaba a `/register` sin llegar a `/authorize`.
-      Cambios: ese metadato con sufijo de ruta (RFC 9728), redirect URIs de ChatGPT `https://chatgpt.com/connector/oauth/<id>` y `https://platform.openai.com/apps-manage/oauth`,
-      y log de los `redirect_uri` rechazados en `/register`. Hipótesis (no confirmada hasta probar): la URL de retorno nueva era rechazada.
-      SES: ya no es pendiente; el MCP es solo para correos @mvevip.com (dominio verificado, el sandbox no afecta).
-- [x] **Paso 10b – `cuadro_ventas` desplegado (30-oct):** PR #4 fusionado y deploy #8 exitoso.
-- [x] **Paso 10a – Herramienta `cuadro_ventas` escrita (30-oct):** `src/mcp/tools/cuadroTool.ts`, parámetro opcional `fecha` (hoy en America/Guayaquil).
-      Devuelve resumen (tarjetas), días laborables, equipos (= tabla `lideres`, sigla con iniciales), grupos (= `usuarios_agrupaciones`, por asesor), líderes por cierres y
-      ventas del día por asesor. Reglas acordadas: estados 9 y 13 siempre excluidos (también en Grupos); ventas = `abono_pagado` (SUM `valor_voucher`), NO `pago_cuadro`;
-      metas contra comisión; meta diaria = meta mensual / días laborables; laborables = lunes a viernes menos `cuadro_feriados` (una sola vez; el PHP `utiles.php` los restaba dos veces
-      y restaba un día extra a los restantes); restantes = laborables posteriores a la fecha, mínimo 0. Octubre 2026: feriado 9-oct → 21 laborables.
-      Duplicados de `usuarios.id_referencia`: todos son `id_referencia = 0` (personal no vendedor); la unión con asesores ignora el 0 y toma un registro por vendedor.
-      Prueba con las cifras de la pantalla del 30-oct (ventas mes 214 430,14; comisión 180 995,13; falta hoy 13 235,71). No incluidas: islas, ranking, dados, parejas, cuadro-octubre, pantalla.
-- [x] **Paso 9c – Ajuste de líderes desplegado (30-oct):** PR #3 fusionado y deploy #7 exitoso (el #6 se canceló por cola atascada de GitHub Actions).
-- [x] **Paso 9b – Desplegado (30-oct):** PR #2 fusionado a `main` y workflow "Deploy to production" #5 exitoso.
-- [x] **Paso 9a – Herramienta `reporte_ventas_mes` escrita (30-oct, sin desplegar):** `src/mcp/tools/salesReportTool.ts`.
-      Reglas: fecha de venta, mes actual en America/Guayaquil, estados 9 y 13 excluidos (anulados, fijo en SQL), todos los líderes (sin filtrar estado ni visual, para comparar meses; ajuste 30-oct),
-      abonos/comisión = suma de todos los pagos de la venta. Parámetros: mes, anio, agrupar_por (asesor, lider, lider_asistente, ciudad, contrato,
-      tipo_contrato), ordenar_por (lista cerrada), direccion. Siempre devuelve totales del mes. Mejoras vs consulta original: rango de fechas
-      semiabierto, pagos limitados al período, join de usuarios sin duplicados. GRANT por columna a `mcp_ro` sobre `mve` aplicado por el usuario.
-      Confirmado con el usuario: `usuarios.id_referencia` tiene 72 valores repetidos reales (0 NULL; el join los deduplica con MIN(id_usuario_crm)),
-      y `registros_pagos.estado` no se usa (un pago anulado se elimina).
-- [x] **Paso 4 – Environment `production` configurado (30-oct, verificado con capturas):** 4 variables
-      (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `ACM_CERTIFICATE_ARN`, `DB_SSL`) y 8 secrets; despliegue restringido a la rama `main`.
+- Código: 77 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
+- Último despliegue: workflow "Deploy to production" **#13** (PR #9). `/health` = 200.
+- Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
+- SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
+- Conector de ChatGPT funcionando (se corrigió el metadato `/.well-known/oauth-protected-resource/mcp` y se permitieron sus URL de retorno `https://chatgpt.com/connector/oauth/<id>`).
 
-## Verificación AWS (22-oct, cuenta 021891594659, usuario admin-cli)
-- No hay nada del MCP desplegado (sin stacks, Lambdas ni CloudFront `mcp.mvevip.com`). SES sin identidades, en sandbox (200/día).
-- **Paso 2 resuelto:** ya existe certificado `*.mvevip.com` ISSUED en us-east-1:
-  `arn:aws:acm:us-east-1:021891594659:certificate/1dae9056-0687-434c-a4ca-c20c76a9462f` → variable `ACM_CERTIFICATE_ARN`.
-- El proveedor OIDC de GitHub ya existe → desplegar el rol con `CreateOidcProvider=false`.
-- RDS público (acordado por ahora; la seguridad se resolverá en otro proyecto). **No modificar el RDS**: solo SQL entregado al usuario.
-- Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
+## Cómo se construyó (resumen; el detalle está en `MEMORIA.md`)
+1. **22-oct** (sesiones anteriores): servidor, seguridad (OAuth 2.0 + PKCE), login usuario/contraseña + código por correo (SES), BD de autenticación, CI/CD con GitHub Actions + OIDC + CloudFormation, usuarios de BD `mcp_ro` y `mcp_auth`.
+2. **30-oct** (esta sesión): rol OIDC, environment `production` de GitHub (4 variables y 8 secrets), primer despliegue, DNS (CNAME `mcp` + 3 DKIM de SES), primer usuario, conector en Claude.
+3. Herramientas de negocio, siempre con el mismo flujo: el usuario pasa la consulta o el código PHP de referencia → Claude la revisa (rangos de fecha, duplicados, reglas ocultas) y propone el diseño → el usuario ejecuta los scripts de verificación y los `GRANT` por columna →
+   Claude escribe la herramienta con pruebas (incluida una que reproduce cifras reales de la pantalla del usuario) → PR → merge → deploy → el usuario prueba en el chat y compara cifras.
+4. Se eliminaron las herramientas genéricas (`test_db_connection`, `describe_database`, `get_table_schema`, `query_database_sample`) para que no haya SQL libre.
+
+## PENDIENTES (por prioridad)
+1. **`asistencia` — definiciones del negocio:**
+   a. *Horas trabajadas*: el usuario las quiere, pero también dijo que las salidas nunca se consideran; falta aclarar el cálculo (¿primera entrada a última marcación del día, u otro?).
+   b. *Feriados*: hoy solo se excluyen sábados y domingos; decidir si se excluyen feriados (tabla `cuadro_feriados` de `vtgsa_ventas`, ya usada por el cuadro).
+   c. *Ausentes* (quién no marcó): etapa 2; requiere lista de empleados activos y días laborables.
+2. **Cuadro de ventas:** el usuario revisará los valores y enviará ajustes si hace falta. Hoy el cuadro **no** descuenta los requerimientos de la comisión (decidido: así está bien por ahora). Rutas del PHP no incluidas: islas, ranking, dados, parejas, `cuadro-octubre`, pantalla (recursos/mensajes/música).
+3. **`requerimientos`:** el campo `estado` no se usa por ahora (decisión del usuario).
+4. **CI de GitHub:** los PR #5 a #9 se fusionaron con el CI todavía en cola; tras corregir las dependencias debería estar en verde, pero **no se verificó**. Revisar la pestaña Actions de `main` y corregir si algo falla.
+5. **Seguridad (más adelante):** RDS público (acordado, otro proyecto); `mcp_ro` conserva `SELECT` sobre toda `vtgsa_ventas` aunque ya no haya SQL libre (se podría reducir a las tablas usadas); el `GRANT` de `punch` en `mve_asistencias` ya no se usa y podría revocarse; restringir herramientas por usuario si algún día se necesita.
+6. **Limpieza del repo (opcional):** `build_zip.ps1`, `deploy_aws.ps1`, `docker-compose.yml`/`Dockerfile` (flujo anterior), `MEMORIA_SESION.md` y `referencia/` son históricos o de otro proyecto.
+7. **Operación:** crear usuarios nuevos cuando se necesiten (comando en `docs/DEPLOY.md`, solo `@mvevip.com`); para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 
 ## SIGUIENTE PASO
-**Paso 15b – El usuario ejecuta `GRANT SELECT (hora_salida) ON mvevip_biometrico.mve_departamentos TO 'mcp_ro'@'%'` (la nueva `asistencia` la necesita) y aclara qué son las "horas trabajadas"**
-(sin usar marcaciones de salida no se pueden calcular). Luego PR + merge a `main` + "Deploy to production" (solo si lo pide) y probar en el chat.
-IMPORTANTE: desplegar ANTES del GRANT hace que `asistencia` falle por permiso de columna.
-
-## Pasos restantes (en orden)
-3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.
-4. (HECHO) GitHub → Settings → Environments → `production`: variables (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION=us-west-2`,
-   `ACM_CERTIFICATE_ARN`, `DB_SSL=rds`, VPC si aplica…) y secrets (`MCP_SIGNING_SECRET`, `ORIGIN_VERIFY_SECRET`,
-   `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME=vtgsa_ventas`, `AUTH_DB_USER`, `AUTH_DB_PASSWORD`). Ver tabla en `docs/DEPLOY.md`.
-5. (HECHO) El código ya está en `main` (PR #1). Ejecutar el workflow "Deploy to production" (`ref=main`).
-6. (HECHO) DNS tras el primer despliegue: CNAME `mcp` → CloudFront; 3 CNAME DKIM de SES; solicitar producción en SES.
-7. (HECHO) Crear el primer usuario con `aws lambda invoke` (comando en `docs/DEPLOY.md`, paso 7).
-8. (HECHO) Conectar `https://mcp.mvevip.com/mcp` en Claude y ChatGPT; probar `test_db_connection`.
-9. Después: herramientas de negocio específicas (ventas por asesor/líder, etc.) con SQL probado — requiere que el usuario
-   indique tablas y consultas de referencia de `vtgsa_ventas`.
+No hay un paso en curso: el trabajo de la sesión quedó cerrado y desplegado. Al reanudar, resumir en 2-3 líneas el estado anterior y preguntar al usuario cuál sigue:
+- **(a)** definir horas trabajadas, feriados y ausentes de `asistencia`;
+- **(b)** una herramienta nueva (pedir la consulta o el PHP de referencia y seguir el flujo del punto 3);
+- **(c)** revisar que el CI de `main` esté en verde y limpiar archivos obsoletos;
+- **(d)** crear más usuarios del MCP.

@@ -38,6 +38,7 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
+- [x] **Paso 9c – Ajuste de líderes desplegado (30-oct):** PR #3 fusionado y deploy #7 exitoso (el #6 se canceló por cola atascada de GitHub Actions).
 - [x] **Paso 9b – Desplegado (30-oct):** PR #2 fusionado a `main` y workflow "Deploy to production" #5 exitoso.
 - [x] **Paso 9a – Herramienta `reporte_ventas_mes` escrita (30-oct, sin desplegar):** `src/mcp/tools/salesReportTool.ts`.
       Reglas: fecha de venta, mes actual en America/Guayaquil, estados 9 y 13 excluidos (anulados, fijo en SQL), todos los líderes (sin filtrar estado ni visual, para comparar meses; ajuste 30-oct),
@@ -58,10 +59,10 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 9c – Probar `reporte_ventas_mes` en el chat** (si no aparece, quitar y volver a agregar el conector para refrescar las herramientas):
-"dame el reporte de ventas del mes", "dame el reporte del mes ordenado por mejor vendedor". Comparar con la referencia (consulta original, 1–30 oct 2026):
-387 ventas · valor_total 259 957,40 · abonos 213 230,31 · comisiones 180 745,13 (las cifras cambian si hay ventas nuevas).
-Pendiente aparte: dependencias con avisos de `npm audit` (body-parser y qs con `npm audit fix`; zod requiere migrar a la v4) — el job CI está en rojo por eso.
+**Paso 9d – Probar en el chat la comparación mes actual vs mes anterior** con `reporte_ventas_mes` (ya sin filtro de líderes por estado/visual).
+Pendientes aparte: (1) SES: AWS **denegó** el acceso a producción (caso 179337882700292) → solo llegan códigos a direcciones @mvevip.com
+(dominio verificado) o a correos externos verificados uno a uno; apelar el caso o verificar direcciones al crear usuarios externos.
+(2) Dependencias con avisos de `npm audit` (body-parser y qs con `npm audit fix`; zod requiere migrar a v4): el job CI está en rojo por eso.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.

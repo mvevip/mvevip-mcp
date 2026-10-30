@@ -16,6 +16,9 @@ const DEFAULT_REDIRECT_URIS = [
   'https://chatgpt.com/connector_platform_oauth_redirect',
   'https://platform.openai.com/apps-manage/oauth'
 ];
+// ChatGPT (conectores MCP): callback con identificador por conector, y la URL de revisión de apps de OpenAI.
+const CHATGPT_CONNECTOR_REDIRECT = /^https:\/\/(chatgpt\.com|chat\.openai\.com)\/connector\/oauth\/[A-Za-z0-9_-]+$/;
+const OPENAI_APPS_REDIRECT = 'https://platform.openai.com/apps-manage/oauth';
 const CHATGPT_GPT_REDIRECT = /^https:\/\/(chatgpt\.com|chat\.openai\.com)\/aip\/g-[a-z0-9-]+\/oauth\/callback$/;
 const DEFAULT_ORIGINS = ['https://claude.ai', 'https://claude.com', 'https://chatgpt.com', 'https://chat.openai.com'];
 const LOOPBACK_REDIRECT = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?\/[^\s#]*$/;
@@ -54,5 +57,11 @@ export const getConfig = (): AppConfig => {
 
 export const isAllowedRedirectUri = (uri: string): boolean => {
   const { allowedRedirectUris } = getConfig();
-  return allowedRedirectUris.includes(uri) || LOOPBACK_REDIRECT.test(uri) || CHATGPT_GPT_REDIRECT.test(uri);
+  return (
+    allowedRedirectUris.includes(uri) ||
+    uri === OPENAI_APPS_REDIRECT ||
+    LOOPBACK_REDIRECT.test(uri) ||
+    CHATGPT_GPT_REDIRECT.test(uri) ||
+    CHATGPT_CONNECTOR_REDIRECT.test(uri)
+  );
 };

@@ -13,7 +13,7 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 
 ## Hecho
 - [x] Código: seguridad endurecida, OAuth 2.0 + PKCE, login usuario/contraseña + código de 6 dígitos por correo (SES),
-      BD de autenticación, guard SQL de solo lectura, 65 pruebas (`npm test`), build y bundle Lambda OK.
+      BD de autenticación, guard SQL de solo lectura, 66 pruebas (`npm test`), build y bundle Lambda OK.
 - [x] CI (`.github/workflows/ci.yml`) y deploy manual (`deploy.yml`, OIDC → CloudFormation `infra/template.yaml`).
 - [x] **Paso 1 – BD (ejecutado por el usuario en el RDS y verificado):**
       - Usuario `mcp_ro` con SOLO `SELECT` sobre la base de negocio **`vtgsa_ventas`** → secret `DB_NAME=vtgsa_ventas`, `DB_USER=mcp_ro`.
@@ -38,6 +38,11 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
+- [x] **Paso 11a – Dependencias y compatibilidad con ChatGPT (30-oct, sin desplegar):** `npm audit` en 0 (body-parser y qs con `npm audit fix`; zod migrado a v4; el CI debe volver a verde).
+      ChatGPT (registro dinámico, DCR) fallaba al crear el conector: los registros mostraron que pedía `/.well-known/oauth-protected-resource/mcp` (404) y llamaba a `/register` sin llegar a `/authorize`.
+      Cambios: ese metadato con sufijo de ruta (RFC 9728), redirect URIs de ChatGPT `https://chatgpt.com/connector/oauth/<id>` y `https://platform.openai.com/apps-manage/oauth`,
+      y log de los `redirect_uri` rechazados en `/register`. Hipótesis (no confirmada hasta probar): la URL de retorno nueva era rechazada.
+      SES: ya no es pendiente; el MCP es solo para correos @mvevip.com (dominio verificado, el sandbox no afecta).
 - [x] **Paso 10b – `cuadro_ventas` desplegado (30-oct):** PR #4 fusionado y deploy #8 exitoso.
 - [x] **Paso 10a – Herramienta `cuadro_ventas` escrita (30-oct):** `src/mcp/tools/cuadroTool.ts`, parámetro opcional `fecha` (hoy en America/Guayaquil).
       Devuelve resumen (tarjetas), días laborables, equipos (= tabla `lideres`, sigla con iniciales), grupos (= `usuarios_agrupaciones`, por asesor), líderes por cierres y
@@ -67,10 +72,9 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 10c – Probar `cuadro_ventas` en el chat** ("¿cómo vamos hoy?", "ventas de hoy por asesor") y comparar con la pantalla del cuadro.
-Si alguna cifra difiere, revisar: ventas del día (ahora = `abono_pagado`, antes `pago_cuadro`) y Grupos (ahora excluye siempre el estado 13).
-Pendientes aparte: (1) SES: AWS denegó producción (caso 179337882700292) → solo @mvevip.com o correos externos verificados uno a uno.
-(2) Dependencias con avisos de `npm audit` (body-parser y qs con `npm audit fix`; zod requiere v4): el CI está en rojo por eso.
+**Paso 11b – Desplegar y reintentar el conector en ChatGPT** (requiere PR + merge a `main` y "Deploy to production"; solo si el usuario lo pide).
+Si ChatGPT vuelve a fallar, mirar en CloudWatch (`/aws/lambda/mvevip-mcp-server`) la línea `[REGISTER] redirect_uri rechazado: [...]` y agregar esa URL a la lista.
+Probar también `cuadro_ventas` y `reporte_ventas_mes` desde ChatGPT.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.

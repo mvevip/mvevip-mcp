@@ -1,4 +1,4 @@
-# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 22-oct-2026)
+# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 30-oct-2026)
 
 Servidor MCP remoto (TypeScript/Express/MySQL) para que Claude y ChatGPT consulten la BD de MVEVIP.
 Destino: `https://mcp.mvevip.com/mcp` · AWS **us-west-2** (Lambda, SES, stack) + CloudFront/ACM (us-east-1) · RDS MySQL existente `database-mvevip` (us-west-2, público, sin VPC).
@@ -13,7 +13,7 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 
 ## Hecho
 - [x] Código: seguridad endurecida, OAuth 2.0 + PKCE, login usuario/contraseña + código de 6 dígitos por correo (SES),
-      BD de autenticación, guard SQL de solo lectura, 53 pruebas (`npm test`), build y bundle Lambda OK.
+      BD de autenticación, guard SQL de solo lectura, 59 pruebas (`npm test`), build y bundle Lambda OK.
 - [x] CI (`.github/workflows/ci.yml`) y deploy manual (`deploy.yml`, OIDC → CloudFormation `infra/template.yaml`).
 - [x] **Paso 1 – BD (ejecutado por el usuario en el RDS y verificado):**
       - Usuario `mcp_ro` con SOLO `SELECT` sobre la base de negocio **`vtgsa_ventas`** → secret `DB_NAME=vtgsa_ventas`, `DB_USER=mcp_ro`.
@@ -30,6 +30,23 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - ChatGPT y Claude permitidos como clientes OAuth (verificar redirect URIs al conectar).
 
 - [x] **Paso 3 – Rol OIDC creado (22-oct, desde Claude):** stack `mvevip-mcp-github-oidc` en us-west-2, CREATE_COMPLETE.
+- [x] **Paso 5 – Despliegue (workflow #4, 30-oct):** stack `mvevip-mcp` OK en us-west-2; endpoint CloudFront `d3enxcswftihjc.cloudfront.net`.
+- [x] **Paso 6 – DNS y SES (30-oct):** 4 CNAME creados (mcp + 3 DKIM); `https://mcp.mvevip.com/health` = 200; SES `mvevip.com` verificado (DKIM SUCCESS).
+      Solicitud de acceso a producción de SES enviada por Claude (estado PENDING, ~24 h). Mientras tanto SES envía solo a
+      direcciones del dominio verificado `mvevip.com` (sandbox, 200/día).
+- [x] **Paso 7 – Usuario `cmino` creado (30-oct, vía Lambda `mvevipAdmin`):** id 1, correo cmino@mvevip.com. Contraseña generada entregada
+      una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
+- [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
+      (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
+- [x] **Paso 9a – Herramienta `reporte_ventas_mes` escrita (30-oct, sin desplegar):** `src/mcp/tools/salesReportTool.ts`.
+      Reglas: fecha de venta, mes actual en America/Guayaquil, estados 9 y 13 excluidos (anulados, fijo en SQL), líderes con estado=1 y visual=1,
+      abonos/comisión = suma de todos los pagos de la venta. Parámetros: mes, anio, agrupar_por (asesor, lider, lider_asistente, ciudad, contrato,
+      tipo_contrato), ordenar_por (lista cerrada), direccion. Siempre devuelve totales del mes. Mejoras vs consulta original: rango de fechas
+      semiabierto, pagos limitados al período, join de usuarios sin duplicados. GRANT por columna a `mcp_ro` sobre `mve` aplicado por el usuario.
+      Pendiente de confirmar: `usuarios.id_referencia` tiene 72 "duplicados" (probablemente NULL; el join ya está protegido) y
+      `registros_pagos` tiene columna `estado` que la consulta original no filtra.
+- [x] **Paso 4 – Environment `production` configurado (30-oct, verificado con capturas):** 4 variables
+      (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `ACM_CERTIFICATE_ARN`, `DB_SSL`) y 8 secrets; despliegue restringido a la rama `main`.
 
 ## Verificación AWS (22-oct, cuenta 021891594659, usuario admin-cli)
 - No hay nada del MCP desplegado (sin stacks, Lambdas ni CloudFront `mcp.mvevip.com`). SES sin identidades, en sandbox (200/día).
@@ -40,19 +57,19 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 4 – GitHub → Settings → Environments → `production`**: crear variables y secrets (tabla en `docs/DEPLOY.md`).
-Valores ya conocidos: `AWS_DEPLOY_ROLE_ARN=arn:aws:iam::021891594659:role/mvevip-mcp-server-github-deploy`, `AWS_REGION=us-west-2`,
-`ACM_CERTIFICATE_ARN=arn:aws:acm:us-east-1:021891594659:certificate/1dae9056-0687-434c-a4ca-c20c76a9462f`, `DB_SSL=rds`,
-`DB_HOST=database-mvevip.c98k2yme6fe6.us-west-2.rds.amazonaws.com`, `DB_NAME=vtgsa_ventas`. Sin VPC.
+**Paso 9b – Desplegar y probar `reporte_ventas_mes`:** el código está en la rama `claude/festive-thompson-nd74zw` (typecheck + 59 pruebas OK).
+El workflow de deploy solo corre desde `main` → requiere PR y merge (solo si el usuario lo pide). Luego Actions → "Deploy to production" (`ref=main`),
+y probar en el chat: "dame el reporte de ventas del mes". Cifras de referencia (consulta original, 1–30 oct 2026, hasta el 30-oct):
+387 ventas · valor_total 259 957,40 · abonos 213 230,31 · comisiones 180 745,13.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.
-4. GitHub → Settings → Environments → `production`: variables (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION=us-west-2`,
+4. (HECHO) GitHub → Settings → Environments → `production`: variables (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION=us-west-2`,
    `ACM_CERTIFICATE_ARN`, `DB_SSL=rds`, VPC si aplica…) y secrets (`MCP_SIGNING_SECRET`, `ORIGIN_VERIFY_SECRET`,
    `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME=vtgsa_ventas`, `AUTH_DB_USER`, `AUTH_DB_PASSWORD`). Ver tabla en `docs/DEPLOY.md`.
-5. Llevar la rama a `main` (PR si el usuario lo pide) y ejecutar el workflow "Deploy to production" (`ref=main`).
-6. DNS tras el primer despliegue: CNAME `mcp` → CloudFront; 3 CNAME DKIM de SES; solicitar producción en SES.
-7. Crear el primer usuario con `aws lambda invoke` (comando en `docs/DEPLOY.md`, paso 7).
-8. Conectar `https://mcp.mvevip.com/mcp` en Claude y ChatGPT; probar `test_db_connection`.
+5. (HECHO) El código ya está en `main` (PR #1). Ejecutar el workflow "Deploy to production" (`ref=main`).
+6. (HECHO) DNS tras el primer despliegue: CNAME `mcp` → CloudFront; 3 CNAME DKIM de SES; solicitar producción en SES.
+7. (HECHO) Crear el primer usuario con `aws lambda invoke` (comando en `docs/DEPLOY.md`, paso 7).
+8. (HECHO) Conectar `https://mcp.mvevip.com/mcp` en Claude y ChatGPT; probar `test_db_connection`.
 9. Después: herramientas de negocio específicas (ventas por asesor/líder, etc.) con SQL probado — requiere que el usuario
    indique tablas y consultas de referencia de `vtgsa_ventas`.

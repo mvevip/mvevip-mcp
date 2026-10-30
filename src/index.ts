@@ -22,11 +22,13 @@ import {
   TestDbInputSchema,
   DescribeDatabaseInputSchema,
   GetTableSchemaInputSchema,
-  QueryDatabaseInputSchema
+  QueryDatabaseInputSchema,
+  SalesReportInputSchema
 } from './mcp/types';
 import { handleTestDbConnection } from './mcp/tools/testDbTool';
 import { handleDescribeDatabase, handleGetTableSchema } from './mcp/tools/schemaTool';
 import { handleQueryDatabase } from './mcp/tools/queryTool';
+import { handleSalesReport } from './mcp/tools/salesReportTool';
 
 dotenv.config();
 
@@ -505,6 +507,27 @@ const MCP_TOOLS: McpToolDefinition[] = [
       },
       required: ['query']
     }
+  },
+  {
+    name: 'reporte_ventas_mes',
+    description: 'Reporte oficial de ventas de un mes (por defecto el mes actual, zona America/Guayaquil), por fecha de venta. Excluye ventas anuladas (estados 9 y 13) y solo incluye líderes activos y visibles. Siempre devuelve los totales del mes. Sin agrupar: una fila por venta con fecha, grupo, líder asistente, cliente, ciudad, abono pagado, valor total, valor pendiente, comisión del asesor, contrato, tipo de contrato y asesor. Agrupado: ventas, valor total, abonos, pendiente y comisión por asesor, líder, ciudad, etc. Úsala para "reporte de ventas del mes", "mejor vendedor" (agrupar_por=asesor, ordenar_por=valor_total, direccion=desc), ventas por líder o ciudad. Prefiérela a query_database_sample para ventas.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mes: { type: 'number', description: 'Mes 1-12. Omitir para el mes actual.' },
+        anio: { type: 'number', description: 'Año (ej: 2026). Omitir para el año actual.' },
+        agrupar_por: {
+          type: 'string',
+          enum: ['ninguno', 'asesor', 'lider', 'lider_asistente', 'ciudad', 'contrato', 'tipo_contrato'],
+          description: "Dimensión de agrupación. 'ninguno' (por defecto) devuelve el detalle venta por venta; 'asesor' sirve para ranking de vendedores."
+        },
+        ordenar_por: {
+          type: 'string',
+          description: "Columna de orden (por defecto valor_total). Sin agrupar: fecha_venta, grupos, lider_asistente, id_cliente, nombre_del_cliente, ciudad, abono_pagado, valor_total, valor_pendiente, comision_asesor, contrato, tipoContrato, fecha_ingreso_cliente, nombre_del_asesor. Agrupado: grupo, ventas, valor_total, abono_pagado, valor_pendiente, comision_asesor."
+        },
+        direccion: { type: 'string', enum: ['asc', 'desc'], description: "Dirección del orden. Por defecto 'desc'." }
+      }
+    }
   }
 ];
 
@@ -577,6 +600,11 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'query_database_sample': {
             const parsed = QueryDatabaseInputSchema.parse(toolArgs);
             return rpcResult(await handleQueryDatabase(parsed.query, parsed.maxRows));
+          }
+
+          case 'reporte_ventas_mes': {
+            const parsed = SalesReportInputSchema.parse(toolArgs);
+            return rpcResult(await handleSalesReport(parsed));
           }
 
           default:

@@ -129,7 +129,7 @@ test('flujo completo: usuario + contraseña + código por correo + PKCE + uso en
   assert.equal(init.result.protocolVersion, '2025-03-26');
 
   const list = await (await rpc(token, { jsonrpc: '2.0', id: 2, method: 'tools/list' })).json();
-  assert.equal(list.result.tools.length, 4);
+  assert.equal(list.result.tools.length, 5);
 
   assert.equal((await rpc(token, { jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
 });

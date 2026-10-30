@@ -19,16 +19,9 @@ import { getStore, getMailer } from './deps';
 import {
   JsonRpcRequest,
   McpToolDefinition,
-  TestDbInputSchema,
-  DescribeDatabaseInputSchema,
-  GetTableSchemaInputSchema,
-  QueryDatabaseInputSchema,
   SalesReportInputSchema,
   CuadroVentasInputSchema
 } from './mcp/types';
-import { handleTestDbConnection } from './mcp/tools/testDbTool';
-import { handleDescribeDatabase, handleGetTableSchema } from './mcp/tools/schemaTool';
-import { handleQueryDatabase } from './mcp/tools/queryTool';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
 import { handleCuadro } from './mcp/tools/cuadroTool';
 
@@ -466,54 +459,6 @@ const authenticateMcp = async (req: Request, res: Response, next: NextFunction) 
 // ---------------------------------------------------------------------------
 const MCP_TOOLS: McpToolDefinition[] = [
   {
-    name: 'test_db_connection',
-    description: 'Función de prueba inicial para verificar conectividad, latencia, versión y estado de la base de datos corporativa MVEVIP.',
-    inputSchema: {
-      type: 'object',
-      properties: {}
-    }
-  },
-  {
-    name: 'describe_database',
-    description: 'Proporciona a Claude un catálogo completo de las tablas existentes en la base de datos corporativa MVEVIP, con número estimado de registros y comentarios.',
-    inputSchema: {
-      type: 'object',
-      properties: {}
-    }
-  },
-  {
-    name: 'get_table_schema',
-    description: 'Devuelve la lista detallada de columnas, tipos de datos, claves primarias y restricciones de una tabla específica.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        tableName: {
-          type: 'string',
-          description: 'Nombre exacto de la tabla a inspeccionar (ej: mve_clientes, mve_cotizaciones, etc.)'
-        }
-      },
-      required: ['tableName']
-    }
-  },
-  {
-    name: 'query_database_sample',
-    description: 'Ejecuta una consulta SQL segura de solo lectura (SELECT, SHOW, DESCRIBE) contra la base de datos corporativa para extraer información con límite de filas.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        query: {
-          type: 'string',
-          description: 'Sentencia SQL de solo lectura a ejecutar (ej: SELECT cli_codigo, cli_nombre FROM mve_clientes LIMIT 10)'
-        },
-        maxRows: {
-          type: 'number',
-          description: 'Cantidad máxima de filas a retornar (por defecto 50, máximo 500)'
-        }
-      },
-      required: ['query']
-    }
-  },
-  {
     name: 'reporte_ventas_mes',
     description: 'Reporte oficial de ventas de un mes (por defecto el mes actual, zona America/Guayaquil), por fecha de venta. Excluye ventas anuladas (estados 9 y 13) e incluye todos los líderes, aunque hoy estén inactivos u ocultos (permite comparar meses). Los líderes sin ventas en el período no aparecen. Siempre devuelve los totales del mes. Sin agrupar: una fila por venta con fecha, grupo, líder asistente, cliente, ciudad, abono pagado, valor total, valor pendiente, comisión del asesor, contrato, tipo de contrato y asesor. Agrupado: ventas, valor total, abonos, pendiente y comisión por asesor, líder, ciudad, etc. Úsala para "reporte de ventas del mes", "mejor vendedor" (agrupar_por=asesor, ordenar_por=valor_total, direccion=desc), ventas por líder o ciudad. Prefiérela a query_database_sample para ventas.',
     inputSchema: {
@@ -599,24 +544,6 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
         console.log(`[TOOL_CALL] user=${(req as any).userId} tool=${String(toolName)}`);
 
         switch (toolName) {
-          case 'test_db_connection':
-            TestDbInputSchema.parse(toolArgs);
-            return rpcResult(await handleTestDbConnection());
-
-          case 'describe_database':
-            DescribeDatabaseInputSchema.parse(toolArgs);
-            return rpcResult(await handleDescribeDatabase());
-
-          case 'get_table_schema': {
-            const parsed = GetTableSchemaInputSchema.parse(toolArgs);
-            return rpcResult(await handleGetTableSchema(parsed.tableName));
-          }
-
-          case 'query_database_sample': {
-            const parsed = QueryDatabaseInputSchema.parse(toolArgs);
-            return rpcResult(await handleQueryDatabase(parsed.query, parsed.maxRows));
-          }
-
           case 'reporte_ventas_mes': {
             const parsed = SalesReportInputSchema.parse(toolArgs);
             return rpcResult(await handleSalesReport(parsed));

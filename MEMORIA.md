@@ -27,7 +27,7 @@ flowchart TD
 
     subgraph Server ["Remote MCP Server (TypeScript / Express)"]
         Endpoint["POST /mcp (JSON-RPC)"]
-        Tools["Herramientas MCP:\n- test_db_connection\n- describe_database\n- get_table_schema\n- query_database_sample"]
+        Tools["Herramientas MCP:\n- reporte_ventas_mes\n- cuadro_ventas"]
     end
 
     subgraph Infra ["Infraestructura de Ejecución"]
@@ -62,10 +62,10 @@ flowchart TD
 * **Criptografía Stateless (`src/auth/tokenManager.ts`):** Códigos temporales firmados con HMAC-SHA256 (TTL 5 min) y Bearer Tokens de larga duración (30 días).
 
 ### C. Herramientas MCP Operativas
-1. `test_db_connection`: Evalúa ping, latencia, versión de MySQL y estado de la conexión.
-2. `describe_database`: Catálogo de tablas con conteo estimado de filas, tamaño y comentarios.
-3. `get_table_schema`: Estructura detallada de columnas, tipos de datos, nulabilidad e índices.
-4. `query_database_sample`: Ejecución de consultas `SELECT`, `SHOW` y `DESCRIBE` con límites automáticos y bloqueo de sentencias mutantes (`INSERT`, `UPDATE`, `DELETE`, `DROP`).
+Desde el 30-oct-2026 el servidor expone solo dos herramientas de reportes (las herramientas genéricas `test_db_connection`, `describe_database`,
+`get_table_schema` y `query_database_sample` se eliminaron: ya no hay consulta SQL libre):
+1. `reporte_ventas_mes`: ventas de un mes (por defecto el actual, America/Guayaquil) por fecha de venta; detalle o agrupado por asesor, líder, líder asistente, ciudad, contrato o tipo de contrato; orden configurable. Excluye estados 9 y 13.
+2. `cuadro_ventas`: el cuadro de la pantalla de la oficina a una fecha: resumen, días laborables, equipos, grupos, líderes por cierres y ventas del día por asesor. Ventas = abono pagado; metas contra comisión.
 
 ### D. Automatización de Empaquetado y Despliegue
 * `build_zip.ps1`: Compila TypeScript y genera el artefacto optimizado `function.zip` (~2.76 MB).

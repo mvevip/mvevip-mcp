@@ -38,7 +38,12 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
-- [x] **Paso 11a – Dependencias y compatibilidad con ChatGPT (30-oct, sin desplegar):** `npm audit` en 0 (body-parser y qs con `npm audit fix`; zod migrado a v4; el CI debe volver a verde).
+- [x] **Paso 12a – Limpieza de herramientas (30-oct, sin desplegar):** a pedido del usuario se eliminaron `test_db_connection`, `describe_database`, `get_table_schema` y
+      `query_database_sample` (código, esquemas, métodos de `dbService` y pruebas). Quedan solo `reporte_ventas_mes` y `cuadro_ventas`. Ya no hay SQL libre desde el chat.
+      `MEMORIA_SESION.md` y `referencia/` son históricos y siguen mencionándolas.
+- [x] **Paso 11c – Conector en ChatGPT funcionando (30-oct):** confirmado por el usuario tras el deploy #9; la causa era la URL de retorno nueva de ChatGPT y el metadato con sufijo de ruta.
+- [x] **Paso 11b – Desplegado (30-oct):** PR #5 fusionado y deploy #9 exitoso; `/.well-known/oauth-protected-resource/mcp` = 200 y `/register` acepta `https://chatgpt.com/connector/oauth/<id>`.
+- [x] **Paso 11a – Dependencias y compatibilidad con ChatGPT (30-oct):** `npm audit` en 0 (body-parser y qs con `npm audit fix`; zod migrado a v4; el CI debe volver a verde).
       ChatGPT (registro dinámico, DCR) fallaba al crear el conector: los registros mostraron que pedía `/.well-known/oauth-protected-resource/mcp` (404) y llamaba a `/register` sin llegar a `/authorize`.
       Cambios: ese metadato con sufijo de ruta (RFC 9728), redirect URIs de ChatGPT `https://chatgpt.com/connector/oauth/<id>` y `https://platform.openai.com/apps-manage/oauth`,
       y log de los `redirect_uri` rechazados en `/register`. Hipótesis (no confirmada hasta probar): la URL de retorno nueva era rechazada.
@@ -72,9 +77,9 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 11b – Desplegar y reintentar el conector en ChatGPT** (requiere PR + merge a `main` y "Deploy to production"; solo si el usuario lo pide).
-Si ChatGPT vuelve a fallar, mirar en CloudWatch (`/aws/lambda/mvevip-mcp-server`) la línea `[REGISTER] redirect_uri rechazado: [...]` y agregar esa URL a la lista.
-Probar también `cuadro_ventas` y `reporte_ventas_mes` desde ChatGPT.
+**Paso 12b – Desplegar la limpieza de herramientas** (PR + merge a `main` + "Deploy to production"; solo si el usuario lo pide) y verificar en Claude y ChatGPT que solo aparezcan
+`reporte_ventas_mes` y `cuadro_ventas` (si siguen apareciendo las anteriores, quitar y volver a agregar el conector).
+Luego: nuevas herramientas de negocio según lo que pida el usuario; crear usuarios con `aws lambda invoke` (`create-user`), solo @mvevip.com.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.

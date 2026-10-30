@@ -38,7 +38,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
-- [x] **Paso 14a – Herramienta `asistencia` escrita (30-oct, sin desplegar):** `src/mcp/tools/asistenciaTool.ts`, base `mvevip_biometrico` (mismo servidor que `vtgsa_ventas`).
+- [x] **Paso 14b – `asistencia` desplegado (30-oct):** GRANT por columna aplicado por el usuario, PR #8 fusionado y deploy #12 exitoso; sin duplicados en `mve_usuarios.user_id_biometrico`.
+- [x] **Paso 14a – Herramienta `asistencia` escrita (30-oct):** `src/mcp/tools/asistenciaTool.ts`, base `mvevip_biometrico` (mismo servidor que `vtgsa_ventas`).
       Entradas = `punch = 0` (0: 13 684 marcaciones, 1: 13 505, 5: 65, 4: 17). Hora esperada = `pico_placa_hora` si `pico_placa_dia = WEEKDAY(ts)+1`, si no `hora_entrada` del departamento
       (hoy 09:45 en los 7 departamentos; 3 = CALL CENTER). Atraso = minutos tras la hora esperada, solo en la PRIMERA marcación del día por empleado (abril/depto 3: 456 marcaciones vs 441 días-empleado);
       `tolerancia_minutos` opcional (0 por defecto). Parámetros: mes/anio o fecha_desde/fecha_hasta, departamento y empleado (búsqueda parcial con valores enlazados `?`), agrupar_por
@@ -93,8 +94,10 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 14b – GRANT por columna sobre `mvevip_biometrico` (lo ejecuta el usuario; script en el chat) + decidir acceso a `asistencia`** (dato sensible de RR. HH.: ¿todos los usuarios del MCP o solo algunos?).
-Luego PR + merge a `main` + "Deploy to production" (solo si el usuario lo pide) y probar en el chat. Referencia (abril 2026, departamento CALL CENTER = 3): 456 marcaciones (punch 0) · 441 días-empleado.
+**Paso 14c – Probar `asistencia` en Claude y ChatGPT** (quitar y volver a agregar el conector si no aparece): "¿quién llegó tarde hoy?", "atrasos de abril por empleado del call center".
+Referencia (abril 2026, CALL CENTER = departamento 3): 456 marcaciones (punch 0) · 441 días-empleado.
+Decidido: la herramienta queda abierta a todos los usuarios del MCP (son administradores de la empresa). Etapa 2 posible: ausentes (quién no marcó; requiere empleados activos y días laborables).
+Luego: nuevas herramientas; valores del cuadro que el usuario revisa; usuarios con `aws lambda invoke` (`create-user`), solo @mvevip.com.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.

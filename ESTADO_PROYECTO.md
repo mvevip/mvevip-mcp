@@ -36,6 +36,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       direcciones del dominio verificado `mvevip.com` (sandbox, 200/día).
 - [x] **Paso 7 – Usuario `cmino` creado (30-oct, vía Lambda `mvevipAdmin`):** id 1, correo cmino@mvevip.com. Contraseña generada entregada
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
+- [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
+      (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
 - [x] **Paso 4 – Environment `production` configurado (30-oct, verificado con capturas):** 4 variables
       (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `ACM_CERTIFICATE_ARN`, `DB_SSL`) y 8 secrets; despliegue restringido a la rama `main`.
 
@@ -48,8 +50,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 8 – Conectar y probar:** en Claude (Personalizar > Conectores > conector personalizado) y ChatGPT, URL
-`https://mcp.mvevip.com/mcp`; iniciar sesión con `cmino`, recibir el código por correo y ejecutar `test_db_connection`.
+**Paso 9 – Herramientas de negocio** (ventas por asesor/líder, etc.): el usuario indica qué reportes necesita y entrega el catálogo de
+tablas/columnas de `vtgsa_ventas` y consultas de referencia; Claude diseña la herramienta con SQL probado y pruebas, de a una.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.
@@ -59,6 +61,6 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 5. (HECHO) El código ya está en `main` (PR #1). Ejecutar el workflow "Deploy to production" (`ref=main`).
 6. (HECHO) DNS tras el primer despliegue: CNAME `mcp` → CloudFront; 3 CNAME DKIM de SES; solicitar producción en SES.
 7. (HECHO) Crear el primer usuario con `aws lambda invoke` (comando en `docs/DEPLOY.md`, paso 7).
-8. Conectar `https://mcp.mvevip.com/mcp` en Claude y ChatGPT; probar `test_db_connection`.
+8. (HECHO) Conectar `https://mcp.mvevip.com/mcp` en Claude y ChatGPT; probar `test_db_connection`.
 9. Después: herramientas de negocio específicas (ventas por asesor/líder, etc.) con SQL probado — requiere que el usuario
    indique tablas y consultas de referencia de `vtgsa_ventas`.

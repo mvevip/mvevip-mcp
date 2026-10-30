@@ -20,10 +20,10 @@ test('rango del mes: desde el día 1 hasta el día 1 del mes siguiente (exclusiv
   assert.equal(dic.hasta, '2027-01-01');
 });
 
-test('excluye anulados (9, 13), líderes activos/visibles y no duplica por usuarios', () => {
+test('excluye anulados (9, 13), incluye todos los líderes y no duplica por usuarios', () => {
   const { detailSql } = buildSalesReportQueries({}, NOW);
   assert.match(detailSql, /estado NOT IN \(9, 13\)/);
-  assert.match(detailSql, /L\.estado = 1 AND L\.visual = 1/);
+  assert.doesNotMatch(detailSql, /L\.estado|L\.visual/);
   assert.match(detailSql, /GROUP BY id_referencia/);
 });
 

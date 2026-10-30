@@ -38,13 +38,14 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
+- [x] **Paso 9b – Desplegado (30-oct):** PR #2 fusionado a `main` y workflow "Deploy to production" #5 exitoso.
 - [x] **Paso 9a – Herramienta `reporte_ventas_mes` escrita (30-oct, sin desplegar):** `src/mcp/tools/salesReportTool.ts`.
-      Reglas: fecha de venta, mes actual en America/Guayaquil, estados 9 y 13 excluidos (anulados, fijo en SQL), líderes con estado=1 y visual=1,
+      Reglas: fecha de venta, mes actual en America/Guayaquil, estados 9 y 13 excluidos (anulados, fijo en SQL), todos los líderes (sin filtrar estado ni visual, para comparar meses; ajuste 30-oct),
       abonos/comisión = suma de todos los pagos de la venta. Parámetros: mes, anio, agrupar_por (asesor, lider, lider_asistente, ciudad, contrato,
       tipo_contrato), ordenar_por (lista cerrada), direccion. Siempre devuelve totales del mes. Mejoras vs consulta original: rango de fechas
       semiabierto, pagos limitados al período, join de usuarios sin duplicados. GRANT por columna a `mcp_ro` sobre `mve` aplicado por el usuario.
-      Pendiente de confirmar: `usuarios.id_referencia` tiene 72 "duplicados" (probablemente NULL; el join ya está protegido) y
-      `registros_pagos` tiene columna `estado` que la consulta original no filtra.
+      Confirmado con el usuario: `usuarios.id_referencia` tiene 72 valores repetidos reales (0 NULL; el join los deduplica con MIN(id_usuario_crm)),
+      y `registros_pagos.estado` no se usa (un pago anulado se elimina).
 - [x] **Paso 4 – Environment `production` configurado (30-oct, verificado con capturas):** 4 variables
       (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `ACM_CERTIFICATE_ARN`, `DB_SSL`) y 8 secrets; despliegue restringido a la rama `main`.
 
@@ -57,10 +58,10 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 9b – Desplegar y probar `reporte_ventas_mes`:** el código está en la rama `claude/festive-thompson-nd74zw` (typecheck + 59 pruebas OK).
-El workflow de deploy solo corre desde `main` → requiere PR y merge (solo si el usuario lo pide). Luego Actions → "Deploy to production" (`ref=main`),
-y probar en el chat: "dame el reporte de ventas del mes". Cifras de referencia (consulta original, 1–30 oct 2026, hasta el 30-oct):
-387 ventas · valor_total 259 957,40 · abonos 213 230,31 · comisiones 180 745,13.
+**Paso 9c – Probar `reporte_ventas_mes` en el chat** (si no aparece, quitar y volver a agregar el conector para refrescar las herramientas):
+"dame el reporte de ventas del mes", "dame el reporte del mes ordenado por mejor vendedor". Comparar con la referencia (consulta original, 1–30 oct 2026):
+387 ventas · valor_total 259 957,40 · abonos 213 230,31 · comisiones 180 745,13 (las cifras cambian si hay ventas nuevas).
+Pendiente aparte: dependencias con avisos de `npm audit` (body-parser y qs con `npm audit fix`; zod requiere migrar a la v4) — el job CI está en rojo por eso.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.

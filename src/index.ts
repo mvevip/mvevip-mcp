@@ -510,7 +510,7 @@ const MCP_TOOLS: McpToolDefinition[] = [
   },
   {
     name: 'reporte_ventas_mes',
-    description: 'Reporte oficial de ventas de un mes (por defecto el mes actual, zona America/Guayaquil), por fecha de venta. Excluye ventas anuladas (estados 9 y 13) y solo incluye líderes activos y visibles. Siempre devuelve los totales del mes. Sin agrupar: una fila por venta con fecha, grupo, líder asistente, cliente, ciudad, abono pagado, valor total, valor pendiente, comisión del asesor, contrato, tipo de contrato y asesor. Agrupado: ventas, valor total, abonos, pendiente y comisión por asesor, líder, ciudad, etc. Úsala para "reporte de ventas del mes", "mejor vendedor" (agrupar_por=asesor, ordenar_por=valor_total, direccion=desc), ventas por líder o ciudad. Prefiérela a query_database_sample para ventas.',
+    description: 'Reporte oficial de ventas de un mes (por defecto el mes actual, zona America/Guayaquil), por fecha de venta. Excluye ventas anuladas (estados 9 y 13) e incluye todos los líderes, aunque hoy estén inactivos u ocultos (permite comparar meses). Los líderes sin ventas en el período no aparecen. Siempre devuelve los totales del mes. Sin agrupar: una fila por venta con fecha, grupo, líder asistente, cliente, ciudad, abono pagado, valor total, valor pendiente, comisión del asesor, contrato, tipo de contrato y asesor. Agrupado: ventas, valor total, abonos, pendiente y comisión por asesor, líder, ciudad, etc. Úsala para "reporte de ventas del mes", "mejor vendedor" (agrupar_por=asesor, ordenar_por=valor_total, direccion=desc), ventas por líder o ciudad. Prefiérela a query_database_sample para ventas.',
     inputSchema: {
       type: 'object',
       properties: {

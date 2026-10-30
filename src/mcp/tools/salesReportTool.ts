@@ -52,7 +52,7 @@ const pad = (n: number) => String(n).padStart(2, '0');
 
 /**
  * Detalle de ventas del período. Mismas columnas y reglas que la consulta de referencia del negocio:
- * se excluyen los estados anulados (9, 13) y solo cuentan ventas de líderes activos y visibles.
+ * se excluyen los estados anulados (9, 13) y se incluyen todos los líderes, estén hoy activos/visibles o no (así se puede comparar contra meses anteriores).
  * Las fechas y los nombres de columna del ORDER BY nunca vienen de texto libre del usuario.
  */
 const baseSql = (desde: string, hasta: string): string => `
@@ -72,7 +72,7 @@ SELECT
   C.cli_fecha_ingreso AS fecha_ingreso_cliente,
   CONCAT(UU.usu_apellido, ' ', UU.usu_nombre) AS nombre_del_asesor
 FROM registros R
-JOIN lideres L ON R.id_lider = L.id_lider AND L.estado = 1 AND L.visual = 1
+JOIN lideres L ON R.id_lider = L.id_lider
 LEFT JOIN (
   SELECT id_registro, SUM(valor_voucher) AS abono, SUM(comision) AS comision
   FROM registros_pagos

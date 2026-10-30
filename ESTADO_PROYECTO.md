@@ -34,6 +34,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - [x] **Paso 6 – DNS y SES (30-oct):** 4 CNAME creados (mcp + 3 DKIM); `https://mcp.mvevip.com/health` = 200; SES `mvevip.com` verificado (DKIM SUCCESS).
       Solicitud de acceso a producción de SES enviada por Claude (estado PENDING, ~24 h). Mientras tanto SES envía solo a
       direcciones del dominio verificado `mvevip.com` (sandbox, 200/día).
+- [x] **Paso 7 – Usuario `cmino` creado (30-oct, vía Lambda `mvevipAdmin`):** id 1, correo cmino@mvevip.com. Contraseña generada entregada
+      una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 4 – Environment `production` configurado (30-oct, verificado con capturas):** 4 variables
       (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `ACM_CERTIFICATE_ARN`, `DB_SSL`) y 8 secrets; despliegue restringido a la rama `main`.
 
@@ -46,8 +48,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 7 – Crear el primer usuario** con `aws lambda invoke` (comando en `docs/DEPLOY.md`, paso 7; usuario `cmino`, correo `cmino@mvevip.com`).
-La contraseña generada se muestra UNA sola vez: guardarla en el gestor de contraseñas. Luego Paso 8 (conectar y probar).
+**Paso 8 – Conectar y probar:** en Claude (Personalizar > Conectores > conector personalizado) y ChatGPT, URL
+`https://mcp.mvevip.com/mcp`; iniciar sesión con `cmino`, recibir el código por correo y ejecutar `test_db_connection`.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.
@@ -56,7 +58,7 @@ La contraseña generada se muestra UNA sola vez: guardarla en el gestor de contr
    `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME=vtgsa_ventas`, `AUTH_DB_USER`, `AUTH_DB_PASSWORD`). Ver tabla en `docs/DEPLOY.md`.
 5. (HECHO) El código ya está en `main` (PR #1). Ejecutar el workflow "Deploy to production" (`ref=main`).
 6. (HECHO) DNS tras el primer despliegue: CNAME `mcp` → CloudFront; 3 CNAME DKIM de SES; solicitar producción en SES.
-7. Crear el primer usuario con `aws lambda invoke` (comando en `docs/DEPLOY.md`, paso 7).
+7. (HECHO) Crear el primer usuario con `aws lambda invoke` (comando en `docs/DEPLOY.md`, paso 7).
 8. Conectar `https://mcp.mvevip.com/mcp` en Claude y ChatGPT; probar `test_db_connection`.
 9. Después: herramientas de negocio específicas (ventas por asesor/líder, etc.) con SQL probado — requiere que el usuario
    indique tablas y consultas de referencia de `vtgsa_ventas`.

@@ -46,3 +46,11 @@ export const QueryDatabaseInputSchema = z.object({
   query: z.string().min(5, 'La consulta SQL debe tener al menos 5 caracteres'),
   maxRows: z.number().int().positive().max(500).default(50).optional(),
 });
+
+export const SalesReportInputSchema = z.object({
+  mes: z.number().int().min(1).max(12).optional(),
+  anio: z.number().int().min(2000).max(2100).optional(),
+  agrupar_por: z.enum(['ninguno', 'asesor', 'lider', 'lider_asistente', 'ciudad', 'contrato', 'tipo_contrato']).optional(),
+  ordenar_por: z.string().max(40).optional(),
+  direccion: z.enum(['asc', 'desc']).optional(),
+});

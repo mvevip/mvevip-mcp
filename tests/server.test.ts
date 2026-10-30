@@ -287,3 +287,30 @@ test('límite por IP: tras 10 intentos fallidos se bloquea incluso con credencia
   for (let i = 0; i < 10; i++) await login(challenge, `no-existe-${i}`);
   assert.equal((await login(challenge, user)).status, 429);
 });
+
+test('ChatGPT: registro dinámico con sus URL de retorno y metadatos del recurso con sufijo de ruta', async () => {
+  for (const uri of [
+    'https://chatgpt.com/connector_platform_oauth_redirect',
+    'https://chatgpt.com/connector/oauth/abC_123-xyz',
+    'https://platform.openai.com/apps-manage/oauth'
+  ]) {
+    const res = await fetch(`${base}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_name: 'ChatGPT', redirect_uris: [uri], token_endpoint_auth_method: 'none' })
+    });
+    assert.equal(res.status, 201, uri);
+  }
+  for (const uri of ['https://evil.example.com/connector/oauth/abc', 'https://chatgpt.com.evil.com/connector/oauth/abc', 'https://chatgpt.com/connector/oauth/a/b']) {
+    const res = await fetch(`${base}/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ redirect_uris: [uri] })
+    });
+    assert.equal(res.status, 400, uri);
+  }
+  const a = await (await fetch(`${base}/.well-known/oauth-protected-resource`)).json();
+  const b = await fetch(`${base}/.well-known/oauth-protected-resource/mcp`);
+  assert.equal(b.status, 200);
+  assert.deepEqual(await b.json(), a);
+});

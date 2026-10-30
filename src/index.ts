@@ -135,7 +135,7 @@ app.get(['/.well-known/oauth-authorization-server', '/.well-known/openid-configu
   });
 });
 
-app.get('/.well-known/oauth-protected-resource', (req: Request, res: Response) => {
+app.get(['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp'], (req: Request, res: Response) => {
   const baseUrl = getBaseUrl(req);
   res.json({
     resource: `${baseUrl}/mcp`,
@@ -398,6 +398,9 @@ app.post('/register', (req: Request, res: Response) => {
   const requested: unknown = req.body?.redirect_uris;
   const redirectUris = Array.isArray(requested) ? requested.map(String) : [];
   if (redirectUris.length === 0 || !redirectUris.every(isAllowedRedirectUri)) {
+    // Las URL de retorno no son secretas; registrarlas permite ajustar la lista de clientes permitidos.
+    const rejected = redirectUris.filter((u) => !isAllowedRedirectUri(u)).map((u) => u.slice(0, 200));
+    console.warn(`[REGISTER] redirect_uri rechazado: ${JSON.stringify(rejected)}`);
     return res.status(400).json({
       error: 'invalid_redirect_uri',
       error_description: 'redirect_uris ausente o no permitido.'

@@ -518,7 +518,7 @@ const MCP_TOOLS: McpToolDefinition[] = [
   },
   {
     name: 'asistencia',
-    description: 'Asistencia del personal según el biométrico (entradas, punch 0): quién marcó, a qué hora, y atrasos. Hora esperada = la de pico y placa del empleado si ese día le corresponde, si no la de entrada de su departamento (hoy 09:45). Atraso = minutos después de la hora esperada; solo cuenta la primera marcación del día de cada empleado. Por defecto devuelve esas primeras marcaciones del mes actual (America/Guayaquil) con minutos de atraso; con agrupar_por da el resumen por empleado, por día o por departamento (días con marcación, atrasos, minutos totales, hora promedio de ingreso). Siempre trae los totales. Úsala para "¿quién llegó tarde hoy?", "atrasos de abril por empleado", "marcaciones de Juan esta semana". No informa ausencias (quién no marcó).',
+    description: 'Asistencia del personal según el biométrico: horas de ENTRADA y atrasos (las salidas nunca se consideran; sábados y domingos tampoco). Una marcación cuenta como entrada por su hora del día (antes del punto medio entre la hora de entrada y de salida del departamento), sin usar el campo punch del dispositivo. Hora esperada = la de pico y placa del empleado si ese día le corresponde, si no la de entrada de su departamento (hoy 09:45). Atraso = minutos después de la hora esperada, solo en la primera entrada del día de cada empleado. Por defecto devuelve esas entradas del mes actual (America/Guayaquil) con minutos de atraso; con agrupar_por da el resumen por empleado, por día o por departamento (días con marcación, atrasos, minutos totales, hora promedio de ingreso). Siempre trae los totales. Si un filtro de departamento o dispositivo no encuentra nada, devuelve los nombres válidos. Úsala para "¿quién llegó tarde hoy?", "atrasos de abril por empleado", "entradas de Juan esta semana". No informa ausencias (quién no marcó).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -528,8 +528,9 @@ const MCP_TOOLS: McpToolDefinition[] = [
         fecha_hasta: { type: 'string', description: 'Fin del rango (YYYY-MM-DD), inclusive. Si solo se indica una de las dos fechas, se usa un solo día (ej. hoy).' },
         departamento: { type: 'string', description: 'Parte del nombre del departamento (ej: CALL CENTER, LIDERES, CONTABILIDAD). Omitir para todos.' },
         empleado: { type: 'string', description: 'Parte del nombre del empleado. Omitir para todos.' },
+        dispositivo: { type: 'string', description: 'Parte del nombre del dispositivo biométrico. Omitir para todos.' },
         agrupar_por: { type: 'string', enum: ['ninguno', 'empleado', 'dia', 'departamento'], description: "'ninguno' (por defecto) lista las marcaciones; 'empleado', 'dia' o 'departamento' resumen de atrasos." },
-        todas_las_marcaciones: { type: 'boolean', description: 'Solo sin agrupar: si es true lista todas las entradas del día (no solo la primera) con dispositivo y hora del día.' },
+        todas_las_marcaciones: { type: 'boolean', description: 'Solo sin agrupar: si es true lista todas las entradas del día (no solo la primera) con dispositivo y hora del día; los atrasos siguen contando solo la primera.' },
         tolerancia_minutos: { type: 'number', description: 'Minutos de gracia (0-120, por defecto 0): un atraso cuenta solo si supera esta tolerancia.' },
         ordenar_por: {
           type: 'string',

@@ -17,37 +17,46 @@ test('período: mes actual, mes dado, un solo día y rango inclusivo', () => {
   assert.throws(() => buildAsistenciaQueries({ fecha_desde: "2026-10-01'; DROP TABLE x; --" }, NOW), /formato/);
 });
 
-test('todas las variantes pasan el guard de solo lectura y solo leen entradas (punch 0) del biométrico', () => {
+test('todas las variantes pasan el guard de solo lectura y leen solo el biométrico', () => {
   const variants = [
     {}, { todas_las_marcaciones: true }, { agrupar_por: 'empleado' as const }, { agrupar_por: 'dia' as const, direccion: 'asc' as const },
-    { agrupar_por: 'departamento' as const, tolerancia_minutos: 5 }, { departamento: 'CALL CENTER', empleado: 'perez' }
+    { agrupar_por: 'departamento' as const, tolerancia_minutos: 5 }, { departamento: 'CALL CENTER', empleado: 'perez', dispositivo: 'entrada' }
   ];
   for (const v of variants) {
     const q = buildAsistenciaQueries(v, NOW);
     validateReadOnlySql(q.detailSql);
     validateReadOnlySql(q.totalsSql);
-    assert.match(q.detailSql, /a\.punch = 0/);
     assert.match(q.detailSql, /mvevip_biometrico\.mve_asistencias/);
   }
 });
 
-test('atraso solo en la primera marcación del día y con tolerancia', () => {
+test('entrada por hora del día (sin usar punch), sin salidas y sin fines de semana', () => {
+  const q = buildAsistenciaQueries({}, NOW);
+  assert.doesNotMatch(q.detailSql, /punch/);
+  assert.match(q.detailSql, /WEEKDAY\(a\.timestamp\) < 5/);
+  // punto medio entre hora de entrada y de salida del departamento
+  assert.match(q.detailSql, /TIME_TO_SEC\(COALESCE\(d\.hora_entrada, '09:45:00'\)\) \/ 60 \+ TIME_TO_SEC\(COALESCE\(d\.hora_salida, '18:00:00'\)\) \/ 60\s*\) \/ 2 AS es_entrada/);
+  assert.match(q.detailSql, /WHERE es_entrada = 1/);
+  assert.match(q.detailSql, /pico_placa_dia = WEEKDAY\(a\.timestamp\) \+ 1 THEN COALESCE\(u\.pico_placa_hora/);
+});
+
+test('primera entrada del día, tolerancia y empleados sin departamento', () => {
   const q = buildAsistenciaQueries({}, NOW);
   assert.match(q.detailSql, /WHERE marca_del_dia = 1/);
-  assert.match(q.detailSql, /ROW_NUMBER\(\) OVER \(PARTITION BY a\.user_id_biometrico, DATE\(a\.timestamp\)/);
-  assert.match(q.detailSql, /pico_placa_dia = WEEKDAY\(m\.ts\) \+ 1 THEN u\.pico_placa_hora/);
+  assert.match(q.detailSql, /ROW_NUMBER\(\) OVER \(PARTITION BY user_id_biometrico, DATE\(ts\) ORDER BY ts\)/);
+  assert.match(q.detailSql, /COALESCE\(d\.nombre, 'SIN DEPARTAMENTO'\) AS departamento/);
+  assert.match(q.detailSql, /LEFT JOIN mvevip_biometrico\.mve_departamentos d/);
   assert.match(buildAsistenciaQueries({ tolerancia_minutos: 5 }, NOW).totalsSql, /minutos_atraso > 5/);
   assert.doesNotMatch(buildAsistenciaQueries({ todas_las_marcaciones: true }, NOW).detailSql, /WHERE marca_del_dia = 1/);
   assert.throws(() => buildAsistenciaQueries({ tolerancia_minutos: 500 }, NOW), /tolerancia/);
 });
 
 test('filtros de texto como valores enlazados, nunca dentro del SQL', () => {
-  const q = buildAsistenciaQueries({ departamento: "call' OR 1=1 --", empleado: '50%_ana' }, NOW);
-  assert.equal(q.values.length, 2);
-  assert.equal(q.values[0], "%call' OR 1=1 --%");
-  assert.equal(q.values[1], '%50\\%\\_ana%');
+  const q = buildAsistenciaQueries({ departamento: "call' OR 1=1 --", empleado: '50%_ana', dispositivo: 'principal' }, NOW);
+  assert.deepEqual(q.values, ["%call' OR 1=1 --%", '%50\\%\\_ana%', '%principal%']);
   assert.doesNotMatch(q.detailSql, /OR 1=1/);
-  assert.equal((q.detailSql.match(/\?/g) ?? []).length, 2);
+  assert.equal((q.detailSql.match(/\?/g) ?? []).length, 3);
+  assert.match(q.detailSql, /d\.nombre LIKE \? AND u\.nombre LIKE \? AND disp\.nombre LIKE \?/);
   assert.equal(likePattern('a_b'), '%a\\_b%');
   assert.deepEqual(buildAsistenciaQueries({ departamento: '  ' }, NOW).values, []);
   assert.throws(() => buildAsistenciaQueries({ empleado: 'x'.repeat(61) }, NOW), /demasiado largo/);

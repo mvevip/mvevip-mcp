@@ -65,6 +65,7 @@ export const AsistenciaInputSchema = z.object({
   fecha_hasta: IsoDate.optional(),
   departamento: z.string().max(60).optional(),
   empleado: z.string().max(60).optional(),
+  dispositivo: z.string().max(60).optional(),
   agrupar_por: z.enum(['ninguno', 'empleado', 'dia', 'departamento']).optional(),
   todas_las_marcaciones: z.boolean().optional(),
   tolerancia_minutos: z.number().int().min(0).max(120).optional(),

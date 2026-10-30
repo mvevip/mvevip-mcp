@@ -2,7 +2,7 @@ import { dbService } from '../../services/dbService';
 import { ToolResult } from '../types';
 
 const MAX_OUTPUT_CHARS = 100_000;
-const REPORT_TIMEZONE = 'America/Guayaquil';
+export const REPORT_TIMEZONE = 'America/Guayaquil';
 
 export const GROUP_BY_COLUMN = {
   asesor: 'nombre_del_asesor',
@@ -88,7 +88,7 @@ LEFT JOIN mve.mve_geo_ciudades D ON C.cli_ciudad = D.id
 LEFT JOIN (
   SELECT id_referencia, MIN(id_usuario_crm) AS id_usuario_crm
   FROM usuarios
-  WHERE id_referencia IS NOT NULL
+  WHERE id_referencia > 0
   GROUP BY id_referencia
 ) U ON R.id_vendedor = U.id_referencia
 LEFT JOIN mve.mve_usuarios UU ON U.id_usuario_crm = UU.usu_codigo

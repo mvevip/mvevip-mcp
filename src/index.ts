@@ -23,12 +23,14 @@ import {
   DescribeDatabaseInputSchema,
   GetTableSchemaInputSchema,
   QueryDatabaseInputSchema,
-  SalesReportInputSchema
+  SalesReportInputSchema,
+  CuadroVentasInputSchema
 } from './mcp/types';
 import { handleTestDbConnection } from './mcp/tools/testDbTool';
 import { handleDescribeDatabase, handleGetTableSchema } from './mcp/tools/schemaTool';
 import { handleQueryDatabase } from './mcp/tools/queryTool';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
+import { handleCuadro } from './mcp/tools/cuadroTool';
 
 dotenv.config();
 
@@ -528,6 +530,16 @@ const MCP_TOOLS: McpToolDefinition[] = [
         direccion: { type: 'string', enum: ['asc', 'desc'], description: "Dirección del orden. Por defecto 'desc'." }
       }
     }
+  },
+  {
+    name: 'cuadro_ventas',
+    description: 'Cuadro de ventas de MVEVIP (el mismo de la pantalla de la oficina) a una fecha (por defecto hoy, zona America/Guayaquil): resumen (ventas de hoy, falta hoy, ventas del mes, comisión del mes y su meta), días laborables y restantes, equipos (líderes) con meta diaria/mensual, avance y meta a fecha, grupos (ventas netas, comisión acumulada, ventas de hoy, meta y falta), líderes por cierres y ventas del día por asesor. Las metas se miden contra la comisión. Excluye ventas anuladas (estados 9 y 13); ventas = abono pagado. Úsala para "cómo vamos hoy", "cuánto falta para la meta", "ventas de hoy por asesor". Para el detalle o comparación de ventas por mes usa reporte_ventas_mes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fecha: { type: 'string', description: 'Fecha del cuadro en formato YYYY-MM-DD. Omitir para hoy.' }
+      }
+    }
   }
 ];
 
@@ -605,6 +617,11 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'reporte_ventas_mes': {
             const parsed = SalesReportInputSchema.parse(toolArgs);
             return rpcResult(await handleSalesReport(parsed));
+          }
+
+          case 'cuadro_ventas': {
+            const parsed = CuadroVentasInputSchema.parse(toolArgs);
+            return rpcResult(await handleCuadro(parsed));
           }
 
           default:

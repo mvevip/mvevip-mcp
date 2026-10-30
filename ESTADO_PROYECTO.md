@@ -13,7 +13,7 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 
 ## Hecho
 - [x] Código: seguridad endurecida, OAuth 2.0 + PKCE, login usuario/contraseña + código de 6 dígitos por correo (SES),
-      BD de autenticación, guard SQL de solo lectura, 59 pruebas (`npm test`), build y bundle Lambda OK.
+      BD de autenticación, guard SQL de solo lectura, 65 pruebas (`npm test`), build y bundle Lambda OK.
 - [x] CI (`.github/workflows/ci.yml`) y deploy manual (`deploy.yml`, OIDC → CloudFormation `infra/template.yaml`).
 - [x] **Paso 1 – BD (ejecutado por el usuario en el RDS y verificado):**
       - Usuario `mcp_ro` con SOLO `SELECT` sobre la base de negocio **`vtgsa_ventas`** → secret `DB_NAME=vtgsa_ventas`, `DB_USER=mcp_ro`.
@@ -38,6 +38,14 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
+- [x] **Paso 10a – Herramienta `cuadro_ventas` escrita (30-oct, sin desplegar):** `src/mcp/tools/cuadroTool.ts`, parámetro opcional `fecha` (hoy en America/Guayaquil).
+      Devuelve resumen (tarjetas), días laborables, equipos (= tabla `lideres`, sigla con iniciales), grupos (= `usuarios_agrupaciones`, por asesor), líderes por cierres y
+      ventas del día por asesor. Reglas acordadas: estados 9 y 13 siempre excluidos (también en Grupos); ventas = `abono_pagado` (SUM `valor_voucher`), NO `pago_cuadro`;
+      metas contra comisión; meta diaria = meta mensual / días laborables; laborables = lunes a viernes menos `cuadro_feriados` (una sola vez; el PHP `utiles.php` los restaba dos veces
+      y restaba un día extra a los restantes); restantes = laborables posteriores a la fecha, mínimo 0. Octubre 2026: feriado 9-oct → 21 laborables.
+      Duplicados de `usuarios.id_referencia`: todos son `id_referencia = 0` (personal no vendedor); la unión con asesores ignora el 0 y toma un registro por vendedor.
+      Prueba con las cifras de la pantalla del 30-oct (ventas mes 214 430,14; comisión 180 995,13; falta hoy 13 235,71). No incluidas: islas, ranking, dados, parejas, cuadro-octubre, pantalla.
+- [x] **Paso 9c – Ajuste de líderes desplegado (30-oct):** PR #3 fusionado y deploy #7 exitoso (el #6 se canceló por cola atascada de GitHub Actions).
 - [x] **Paso 9b – Desplegado (30-oct):** PR #2 fusionado a `main` y workflow "Deploy to production" #5 exitoso.
 - [x] **Paso 9a – Herramienta `reporte_ventas_mes` escrita (30-oct, sin desplegar):** `src/mcp/tools/salesReportTool.ts`.
       Reglas: fecha de venta, mes actual en America/Guayaquil, estados 9 y 13 excluidos (anulados, fijo en SQL), todos los líderes (sin filtrar estado ni visual, para comparar meses; ajuste 30-oct),
@@ -58,10 +66,10 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 9c – Probar `reporte_ventas_mes` en el chat** (si no aparece, quitar y volver a agregar el conector para refrescar las herramientas):
-"dame el reporte de ventas del mes", "dame el reporte del mes ordenado por mejor vendedor". Comparar con la referencia (consulta original, 1–30 oct 2026):
-387 ventas · valor_total 259 957,40 · abonos 213 230,31 · comisiones 180 745,13 (las cifras cambian si hay ventas nuevas).
-Pendiente aparte: dependencias con avisos de `npm audit` (body-parser y qs con `npm audit fix`; zod requiere migrar a la v4) — el job CI está en rojo por eso.
+**Paso 10b – Desplegar y probar `cuadro_ventas`:** el código está en la rama `claude/festive-thompson-nd74zw` (typecheck + 65 pruebas OK), requiere PR y merge
+(solo si el usuario lo pide) y luego "Deploy to production" (`ref=main`). Probar en el chat "¿cómo vamos hoy?" y comparar con la pantalla del cuadro.
+Pendientes aparte: (1) SES: AWS denegó producción (caso 179337882700292) → solo @mvevip.com o correos externos verificados uno a uno.
+(2) Dependencias con avisos de `npm audit` (body-parser y qs con `npm audit fix`; zod requiere v4): el CI está en rojo por eso.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.

@@ -13,7 +13,7 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 
 ## Hecho
 - [x] Código: seguridad endurecida, OAuth 2.0 + PKCE, login usuario/contraseña + código de 6 dígitos por correo (SES),
-      BD de autenticación, guard SQL de solo lectura, 66 pruebas (`npm test`), build y bundle Lambda OK.
+      BD de autenticación, guard SQL de solo lectura, 71 pruebas (`npm test`), build y bundle Lambda OK.
 - [x] CI (`.github/workflows/ci.yml`) y deploy manual (`deploy.yml`, OIDC → CloudFormation `infra/template.yaml`).
 - [x] **Paso 1 – BD (ejecutado por el usuario en el RDS y verificado):**
       - Usuario `mcp_ro` con SOLO `SELECT` sobre la base de negocio **`vtgsa_ventas`** → secret `DB_NAME=vtgsa_ventas`, `DB_USER=mcp_ro`.
@@ -38,6 +38,12 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
+- [x] **Paso 13a – Herramienta `requerimientos` escrita (30-oct, sin desplegar):** `src/mcp/tools/requerimientosTool.ts`. Requerimientos = devoluciones y reclamos de ventas de asesores (tabla
+      `requerimientos`). Reglas acordadas: se cuentan siempre en el mes en que se INGRESARON (`fecha_requerimiento`, tipo date), se muestra también `fecha_venta` y `fecha_alta` (hora de registro);
+      su valor se DESCUENTA de la comisión del asesor; el campo `estado` no se usa por ahora. Parámetros: mes, anio, fecha_desde/fecha_hasta (inclusive), agrupar_por (ninguno, asesor), ordenar_por, direccion.
+      `reporte_ventas_mes` ganó `incluir_requerimientos`: por asesor agrega requerimientos_cantidad, requerimientos_valor y comision_neta (= comision_asesor − requerimientos_valor; incluye
+      asesores con requerimientos y sin ventas); con otras agrupaciones solo en los totales. El asesor se resuelve con el mismo nombre de `mve_usuarios` (o `usuarios.usuario_crm`).
+      Utilidades de fechas movidas a `src/mcp/tools/dates.ts`. 71 pruebas. Sin índice en `fecha_requerimiento` (tabla de ~200 filas, no hace falta).
 - [x] **Paso 12b – Limpieza desplegada (30-oct):** PR #6 fusionado y deploy #10 exitoso.
 - [x] **Paso 12a – Limpieza de herramientas (30-oct):** a pedido del usuario se eliminaron `test_db_connection`, `describe_database`, `get_table_schema` y
       `query_database_sample` (código, esquemas, métodos de `dbService` y pruebas). Quedan solo `reporte_ventas_mes` y `cuadro_ventas`. Ya no hay SQL libre desde el chat.
@@ -78,9 +84,11 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 12c – Verificar en Claude y ChatGPT que solo aparezcan `reporte_ventas_mes` y `cuadro_ventas`** (si siguen las anteriores, quitar y volver a agregar el conector).
-Luego: nuevas herramientas de negocio según lo que pida el usuario (consultas de referencia → revisión → herramienta con pruebas → PR → deploy → prueba en el chat);
-valores del cuadro que el usuario revisa y enviará como ajustes; crear usuarios con `aws lambda invoke` (`create-user`), solo @mvevip.com.
+**Paso 13b – Desplegar y probar `requerimientos`** (PR + merge a `main` + "Deploy to production"; solo si el usuario lo pide). Probar en el chat:
+"lista de requerimientos del mes", "¿ingresó un requerimiento hoy?", "ventas por asesor incluido requerimientos". Referencia (octubre 2026, al 30-oct):
+8 requerimientos · valor total 4 134,00.
+Pendiente de decidir con el usuario: si el `cuadro_ventas` (comisión del mes y avance contra meta) también debe descontar los requerimientos.
+Luego: valores del cuadro que el usuario revisa y enviará como ajustes; nuevas herramientas; usuarios con `aws lambda invoke` (`create-user`), solo @mvevip.com.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.

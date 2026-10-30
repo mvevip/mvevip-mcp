@@ -1,8 +1,17 @@
 import { dbService } from '../../services/dbService';
 import { ToolResult } from '../types';
+import { REPORT_TIMEZONE, currentMonthInTimezone } from './dates';
+import {
+  REQ_MERGED_ORDER_COLUMNS,
+  mergeRequerimientosByAsesor,
+  requerimientosByAsesorSql,
+  requerimientosTotalsSql,
+  withRequerimientosTotals
+} from './requerimientosTool';
+
+export { REPORT_TIMEZONE, currentMonthInTimezone } from './dates';
 
 const MAX_OUTPUT_CHARS = 100_000;
-export const REPORT_TIMEZONE = 'America/Guayaquil';
 
 export const GROUP_BY_COLUMN = {
   asesor: 'nombre_del_asesor',
@@ -29,6 +38,7 @@ export interface SalesReportParams {
   agrupar_por?: keyof typeof GROUP_BY_COLUMN | 'ninguno';
   ordenar_por?: string;
   direccion?: 'asc' | 'desc';
+  incluir_requerimientos?: boolean;
 }
 
 export interface SalesReportQueries {
@@ -37,16 +47,6 @@ export interface SalesReportQueries {
   desde: string;
   hasta: string;
 }
-
-/** Mes y año vigentes en la zona horaria del negocio (no en la del servidor, que es UTC). */
-export const currentMonthInTimezone = (now: Date = new Date()): { mes: number; anio: number } => {
-  const parts = new Intl.DateTimeFormat('en-CA', { timeZone: REPORT_TIMEZONE, year: 'numeric', month: '2-digit' })
-    .formatToParts(now);
-  return {
-    anio: Number(parts.find((p) => p.type === 'year')!.value),
-    mes: Number(parts.find((p) => p.type === 'month')!.value)
-  };
-};
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -117,6 +117,9 @@ FROM (${base}) v`;
 
   if (agrupar === 'ninguno') {
     const orden = params.ordenar_por ?? 'valor_total';
+    if ((REQ_MERGED_ORDER_COLUMNS as readonly string[]).includes(orden)) {
+      throw new Error('ordenar_por requerimientos_* y comision_neta requieren incluir_requerimientos=true y agrupar_por=asesor.');
+    }
     if (!(DETAIL_ORDER_COLUMNS as readonly string[]).includes(orden)) {
       throw new Error(`ordenar_por inválido para el detalle. Opciones: ${DETAIL_ORDER_COLUMNS.join(', ')}`);
     }
@@ -126,33 +129,63 @@ FROM (${base}) v`;
   const groupColumn = GROUP_BY_COLUMN[agrupar];
   if (!groupColumn) throw new Error(`agrupar_por inválido. Opciones: ninguno, ${Object.keys(GROUP_BY_COLUMN).join(', ')}`);
   const orden = params.ordenar_por ?? 'valor_total';
-  if (!(GROUP_ORDER_COLUMNS as readonly string[]).includes(orden)) {
+  const conRequerimientos = !!params.incluir_requerimientos && agrupar === 'asesor';
+  const ordenFusionado = (REQ_MERGED_ORDER_COLUMNS as readonly string[]).includes(orden);
+  if (ordenFusionado && !conRequerimientos) {
+    throw new Error('ordenar_por requerimientos_* y comision_neta requieren incluir_requerimientos=true y agrupar_por=asesor.');
+  }
+  if (!ordenFusionado && !(GROUP_ORDER_COLUMNS as readonly string[]).includes(orden)) {
     throw new Error(`ordenar_por inválido al agrupar. Opciones: ${GROUP_ORDER_COLUMNS.join(', ')}`);
   }
+  // Las columnas de requerimientos no existen en SQL: el orden final se aplica al fusionar (ver handleSalesReport).
+  const sqlOrden = ordenFusionado ? 'valor_total' : orden;
   const detailSql = `SELECT COALESCE(NULLIF(TRIM(\`${groupColumn}\`), ''), 'SIN ASIGNAR') AS grupo, COUNT(*) AS ventas,
   ROUND(SUM(valor_total), 2) AS valor_total, ROUND(SUM(abono_pagado), 2) AS abono_pagado,
   ROUND(SUM(valor_pendiente), 2) AS valor_pendiente, ROUND(SUM(comision_asesor), 2) AS comision_asesor
 FROM (${base}) v
 GROUP BY grupo
-ORDER BY \`${orden}\` ${direccion}, grupo ASC`;
+ORDER BY \`${sqlOrden}\` ${direccion}, grupo ASC`;
   return { detailSql, totalsSql, desde, hasta };
 };
 
 export const handleSalesReport = async (params: SalesReportParams): Promise<ToolResult> => {
   try {
     const q = buildSalesReportQueries(params);
-    const [detail, totals] = await Promise.all([
+    const agrupar = params.agrupar_por ?? 'ninguno';
+    const conRequerimientos = !!params.incluir_requerimientos;
+    const porAsesor = conRequerimientos && agrupar === 'asesor';
+    const [detail, totals, reqTotals, reqByAsesor] = await Promise.all([
       dbService.executeReadOnlyQuery(q.detailSql, 500),
-      dbService.executeReadOnlyQuery(q.totalsSql, 1)
+      dbService.executeReadOnlyQuery(q.totalsSql, 1),
+      conRequerimientos ? dbService.executeReadOnlyQuery(requerimientosTotalsSql(q.desde, q.hasta), 1) : null,
+      porAsesor ? dbService.executeReadOnlyQuery(requerimientosByAsesorSql(q.desde, q.hasta), 500) : null
     ]);
+
+    let filas: any[] = detail.rows;
+    if (porAsesor) {
+      filas = mergeRequerimientosByAsesor(
+        detail.rows, reqByAsesor!.rows, params.ordenar_por ?? 'valor_total', params.direccion === 'asc' ? 'asc' : 'desc'
+      );
+    }
 
     const payload = {
       periodo: { desde: q.desde, hasta_exclusivo: q.hasta, zona_horaria: REPORT_TIMEZONE },
-      agrupado_por: params.agrupar_por ?? 'ninguno',
-      totales_del_periodo: totals.rows[0],
-      filas_devueltas: detail.rowCount,
+      agrupado_por: agrupar,
+      ...(conRequerimientos
+        ? {
+            requerimientos: {
+              incluidos: true,
+              criterio: 'se cuentan en el mes en que ingresaron (fecha del requerimiento) y se descuentan de la comisión: comision_neta = comision_asesor - requerimientos_valor',
+              desglose_por_fila: porAsesor
+                ? 'por asesor'
+                : "solo en los totales; use agrupar_por='asesor' para verlo por asesor"
+            }
+          }
+        : {}),
+      totales_del_periodo: conRequerimientos ? withRequerimientosTotals(totals.rows[0], reqTotals!.rows[0]) : totals.rows[0],
+      filas_devueltas: filas.length,
       filas_recortadas: detail.truncated,
-      filas: detail.rows
+      filas
     };
     let json = JSON.stringify(payload, null, 2);
     const cut = json.length > MAX_OUTPUT_CHARS;

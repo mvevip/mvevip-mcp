@@ -20,10 +20,12 @@ import {
   JsonRpcRequest,
   McpToolDefinition,
   SalesReportInputSchema,
-  CuadroVentasInputSchema
+  CuadroVentasInputSchema,
+  RequerimientosInputSchema
 } from './mcp/types';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
 import { handleCuadro } from './mcp/tools/cuadroTool';
+import { handleRequerimientos } from './mcp/tools/requerimientosTool';
 
 dotenv.config();
 
@@ -475,7 +477,11 @@ const MCP_TOOLS: McpToolDefinition[] = [
           type: 'string',
           description: "Columna de orden (por defecto valor_total). Sin agrupar: fecha_venta, grupos, lider_asistente, id_cliente, nombre_del_cliente, ciudad, abono_pagado, valor_total, valor_pendiente, comision_asesor, contrato, tipoContrato, fecha_ingreso_cliente, nombre_del_asesor. Agrupado: grupo, ventas, valor_total, abono_pagado, valor_pendiente, comision_asesor."
         },
-        direccion: { type: 'string', enum: ['asc', 'desc'], description: "Dirección del orden. Por defecto 'desc'." }
+        direccion: { type: 'string', enum: ['asc', 'desc'], description: "Dirección del orden. Por defecto 'desc'." },
+        incluir_requerimientos: {
+          type: 'boolean',
+          description: "Si es true agrega los requerimientos (devoluciones y reclamos) ingresados en el mes y la comisión neta (comision_asesor menos requerimientos_valor). Se desglosa por asesor con agrupar_por='asesor'; con otras agrupaciones aparece solo en los totales. Con agrupar_por='asesor' también se puede ordenar_por requerimientos_cantidad, requerimientos_valor o comision_neta."
+        }
       }
     }
   },
@@ -486,6 +492,25 @@ const MCP_TOOLS: McpToolDefinition[] = [
       type: 'object',
       properties: {
         fecha: { type: 'string', description: 'Fecha del cuadro en formato YYYY-MM-DD. Omitir para hoy.' }
+      }
+    }
+  },
+  {
+    name: 'requerimientos',
+    description: 'Requerimientos de MVEVIP: devoluciones y reclamos de ventas realizadas por asesores. Se cuentan siempre en el período en que se ingresaron (fecha del requerimiento, por defecto el mes actual en America/Guayaquil) y su valor se descuenta de la comisión del asesor. Sin agrupar devuelve cada requerimiento (fecha de ingreso y hora de registro, fecha de la venta original, cliente, valor, observaciones y asesor); agrupado por asesor devuelve cantidad y valor. Siempre trae los totales. Úsala para "la lista de requerimientos del mes anterior", "¿ingresó un requerimiento hoy?" (fecha_desde y fecha_hasta de hoy; la hora de registro viene en fecha_alta) o los requerimientos de un asesor. Para ventas y comisión neta por asesor usa reporte_ventas_mes con incluir_requerimientos.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mes: { type: 'number', description: 'Mes 1-12. Omitir para el mes actual.' },
+        anio: { type: 'number', description: 'Año (ej: 2026). Omitir para el año actual.' },
+        fecha_desde: { type: 'string', description: 'Inicio del rango (YYYY-MM-DD), inclusive. Si se indica, reemplaza a mes y anio.' },
+        fecha_hasta: { type: 'string', description: 'Fin del rango (YYYY-MM-DD), inclusive. Si solo se indica una de las dos fechas, se usa un solo día.' },
+        agrupar_por: { type: 'string', enum: ['ninguno', 'asesor'], description: "'ninguno' (por defecto) lista cada requerimiento; 'asesor' da cantidad y valor por asesor." },
+        ordenar_por: {
+          type: 'string',
+          description: 'Sin agrupar: fecha_alta (por defecto, más recientes primero), fecha_requerimiento, fecha_venta, valor, nombre_cliente, asesor. Agrupado: grupo, cantidad, valor (por defecto).'
+        },
+        direccion: { type: 'string', enum: ['asc', 'desc'], description: "Dirección del orden. Por defecto 'desc'." }
       }
     }
   }
@@ -552,6 +577,11 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'cuadro_ventas': {
             const parsed = CuadroVentasInputSchema.parse(toolArgs);
             return rpcResult(await handleCuadro(parsed));
+          }
+
+          case 'requerimientos': {
+            const parsed = RequerimientosInputSchema.parse(toolArgs);
+            return rpcResult(await handleRequerimientos(parsed));
           }
 
           default:

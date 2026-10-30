@@ -38,6 +38,7 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
+- [x] **Paso 11c – Conector en ChatGPT funcionando (30-oct):** confirmado por el usuario tras el deploy #9; la causa era la URL de retorno nueva de ChatGPT y el metadato con sufijo de ruta.
 - [x] **Paso 11b – Desplegado (30-oct):** PR #5 fusionado y deploy #9 exitoso; `/.well-known/oauth-protected-resource/mcp` = 200 y `/register` acepta `https://chatgpt.com/connector/oauth/<id>`.
 - [x] **Paso 11a – Dependencias y compatibilidad con ChatGPT (30-oct):** `npm audit` en 0 (body-parser y qs con `npm audit fix`; zod migrado a v4; el CI debe volver a verde).
       ChatGPT (registro dinámico, DCR) fallaba al crear el conector: los registros mostraron que pedía `/.well-known/oauth-protected-resource/mcp` (404) y llamaba a `/register` sin llegar a `/authorize`.
@@ -73,8 +74,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 11c – Reintentar el conector en ChatGPT** (`https://mcp.mvevip.com/mcp`, autenticación OAuth, registro dinámico DCR) y probar `cuadro_ventas` y `reporte_ventas_mes`.
-Si vuelve a fallar: mirar en CloudWatch (`/aws/lambda/mvevip-mcp-server`) la línea `[REGISTER] redirect_uri rechazado: [...]` y agregar esa URL a la lista.
+**Paso 12 – Nuevas herramientas de negocio** según lo que pida el usuario (de a una: consultas SQL de referencia → revisión → herramienta con pruebas → PR → deploy → prueba en el chat).
+Operación pendiente: crear usuarios nuevos con `aws lambda invoke` (`create-user`) cuando se necesiten; solo correos @mvevip.com.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.

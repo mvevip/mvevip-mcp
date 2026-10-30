@@ -13,7 +13,7 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 
 ## Hecho
 - [x] Código: seguridad endurecida, OAuth 2.0 + PKCE, login usuario/contraseña + código de 6 dígitos por correo (SES),
-      BD de autenticación, guard SQL de solo lectura, 71 pruebas (`npm test`), build y bundle Lambda OK.
+      BD de autenticación, guard SQL de solo lectura, 76 pruebas (`npm test`), build y bundle Lambda OK.
 - [x] CI (`.github/workflows/ci.yml`) y deploy manual (`deploy.yml`, OIDC → CloudFormation `infra/template.yaml`).
 - [x] **Paso 1 – BD (ejecutado por el usuario en el RDS y verificado):**
       - Usuario `mcp_ro` con SOLO `SELECT` sobre la base de negocio **`vtgsa_ventas`** → secret `DB_NAME=vtgsa_ventas`, `DB_USER=mcp_ro`.
@@ -38,6 +38,14 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
+- [x] **Paso 14a – Herramienta `asistencia` escrita (30-oct, sin desplegar):** `src/mcp/tools/asistenciaTool.ts`, base `mvevip_biometrico` (mismo servidor que `vtgsa_ventas`).
+      Entradas = `punch = 0` (0: 13 684 marcaciones, 1: 13 505, 5: 65, 4: 17). Hora esperada = `pico_placa_hora` si `pico_placa_dia = WEEKDAY(ts)+1`, si no `hora_entrada` del departamento
+      (hoy 09:45 en los 7 departamentos; 3 = CALL CENTER). Atraso = minutos tras la hora esperada, solo en la PRIMERA marcación del día por empleado (abril/depto 3: 456 marcaciones vs 441 días-empleado);
+      `tolerancia_minutos` opcional (0 por defecto). Parámetros: mes/anio o fecha_desde/fecha_hasta, departamento y empleado (búsqueda parcial con valores enlazados `?`), agrupar_por
+      (ninguno, empleado, dia, departamento), todas_las_marcaciones, ordenar_por, direccion. No informa ausencias (queda para después). `timestamp` es DATETIME (sin conversión de zona).
+      `dbService.executeReadOnlyQuery` ganó el parámetro `values` (valores enlazados). `resolveDateRange` movido a `dates.ts`. Sin índices nuevos (23 280 filas). 76 pruebas.
+      Requiere GRANT SELECT por columna a `mcp_ro` (mve_asistencias: timestamp, user_id_biometrico, dispositivo_id, punch; mve_usuarios: user_id_biometrico, nombre, departamento_id,
+      pico_placa_dia, pico_placa_hora; mve_departamentos: id, nombre, hora_entrada; mve_dispositivos: id, nombre).
 - [x] **Paso 13b – `requerimientos` desplegado (30-oct):** PR #7 fusionado y deploy #11 exitoso.
 - [x] **Paso 13a – Herramienta `requerimientos` escrita (30-oct):** `src/mcp/tools/requerimientosTool.ts`. Requerimientos = devoluciones y reclamos de ventas de asesores (tabla
       `requerimientos`). Reglas acordadas: se cuentan siempre en el mes en que se INGRESARON (`fecha_requerimiento`, tipo date), se muestra también `fecha_venta` y `fecha_alta` (hora de registro);
@@ -85,10 +93,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 13c – Probar `requerimientos` en Claude y ChatGPT** (quitar y volver a agregar el conector si no aparece la herramienta nueva): "lista de requerimientos del mes",
-"¿ingresó un requerimiento hoy?", "ventas por asesor incluido requerimientos". Referencia (octubre 2026, al 30-oct): 8 requerimientos · valor total 4 134,00.
-Pendiente de decidir con el usuario: si el `cuadro_ventas` (comisión del mes y avance contra meta) también debe descontar los requerimientos.
-Luego: valores del cuadro que el usuario revisa y enviará como ajustes; nuevas herramientas; usuarios con `aws lambda invoke` (`create-user`), solo @mvevip.com.
+**Paso 14b – GRANT por columna sobre `mvevip_biometrico` (lo ejecuta el usuario; script en el chat) + decidir acceso a `asistencia`** (dato sensible de RR. HH.: ¿todos los usuarios del MCP o solo algunos?).
+Luego PR + merge a `main` + "Deploy to production" (solo si el usuario lo pide) y probar en el chat. Referencia (abril 2026, departamento CALL CENTER = 3): 456 marcaciones (punch 0) · 441 días-empleado.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.

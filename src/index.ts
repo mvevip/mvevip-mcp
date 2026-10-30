@@ -21,11 +21,13 @@ import {
   McpToolDefinition,
   SalesReportInputSchema,
   CuadroVentasInputSchema,
-  RequerimientosInputSchema
+  RequerimientosInputSchema,
+  AsistenciaInputSchema
 } from './mcp/types';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
 import { handleCuadro } from './mcp/tools/cuadroTool';
 import { handleRequerimientos } from './mcp/tools/requerimientosTool';
+import { handleAsistencia } from './mcp/tools/asistenciaTool';
 
 dotenv.config();
 
@@ -513,6 +515,29 @@ const MCP_TOOLS: McpToolDefinition[] = [
         direccion: { type: 'string', enum: ['asc', 'desc'], description: "Dirección del orden. Por defecto 'desc'." }
       }
     }
+  },
+  {
+    name: 'asistencia',
+    description: 'Asistencia del personal según el biométrico (entradas, punch 0): quién marcó, a qué hora, y atrasos. Hora esperada = la de pico y placa del empleado si ese día le corresponde, si no la de entrada de su departamento (hoy 09:45). Atraso = minutos después de la hora esperada; solo cuenta la primera marcación del día de cada empleado. Por defecto devuelve esas primeras marcaciones del mes actual (America/Guayaquil) con minutos de atraso; con agrupar_por da el resumen por empleado, por día o por departamento (días con marcación, atrasos, minutos totales, hora promedio de ingreso). Siempre trae los totales. Úsala para "¿quién llegó tarde hoy?", "atrasos de abril por empleado", "marcaciones de Juan esta semana". No informa ausencias (quién no marcó).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mes: { type: 'number', description: 'Mes 1-12. Omitir para el mes actual.' },
+        anio: { type: 'number', description: 'Año (ej: 2026). Omitir para el año actual.' },
+        fecha_desde: { type: 'string', description: 'Inicio del rango (YYYY-MM-DD), inclusive. Si se indica, reemplaza a mes y anio.' },
+        fecha_hasta: { type: 'string', description: 'Fin del rango (YYYY-MM-DD), inclusive. Si solo se indica una de las dos fechas, se usa un solo día (ej. hoy).' },
+        departamento: { type: 'string', description: 'Parte del nombre del departamento (ej: CALL CENTER, LIDERES, CONTABILIDAD). Omitir para todos.' },
+        empleado: { type: 'string', description: 'Parte del nombre del empleado. Omitir para todos.' },
+        agrupar_por: { type: 'string', enum: ['ninguno', 'empleado', 'dia', 'departamento'], description: "'ninguno' (por defecto) lista las marcaciones; 'empleado', 'dia' o 'departamento' resumen de atrasos." },
+        todas_las_marcaciones: { type: 'boolean', description: 'Solo sin agrupar: si es true lista todas las entradas del día (no solo la primera) con dispositivo y hora del día.' },
+        tolerancia_minutos: { type: 'number', description: 'Minutos de gracia (0-120, por defecto 0): un atraso cuenta solo si supera esta tolerancia.' },
+        ordenar_por: {
+          type: 'string',
+          description: 'Sin agrupar: fecha_hora_marcacion (por defecto), fecha, empleado, departamento, hora_esperada, minutos_atraso. Por empleado: empleado, departamento, dias_con_marcacion, atrasos, minutos_atraso_total (por defecto), hora_promedio_ingreso. Por dia: fecha (por defecto), empleados, atrasos, minutos_atraso_total. Por departamento: departamento, dias_con_marcacion, atrasos, minutos_atraso_total (por defecto).'
+        },
+        direccion: { type: 'string', enum: ['asc', 'desc'], description: "Dirección del orden. Por defecto 'desc'." }
+      }
+    }
   }
 ];
 
@@ -582,6 +607,11 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'requerimientos': {
             const parsed = RequerimientosInputSchema.parse(toolArgs);
             return rpcResult(await handleRequerimientos(parsed));
+          }
+
+          case 'asistencia': {
+            const parsed = AsistenciaInputSchema.parse(toolArgs);
+            return rpcResult(await handleAsistencia(parsed));
           }
 
           default:

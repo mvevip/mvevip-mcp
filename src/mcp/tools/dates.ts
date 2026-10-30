@@ -42,3 +42,26 @@ export const monthRange = (fecha: string): { desde: string; hastaExclusivo: stri
   const m = d.getUTCMonth();
   return { desde: toIso(new Date(Date.UTC(y, m, 1))), hastaExclusivo: toIso(new Date(Date.UTC(y, m + 1, 1))) };
 };
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/** Período de un reporte: rango explícito (inclusive en ambos extremos) o un mes completo (por defecto el actual). */
+export const resolveDateRange = (
+  p: { mes?: number; anio?: number; fecha_desde?: string; fecha_hasta?: string },
+  now: Date = new Date()
+): { desde: string; hastaExclusivo: string } => {
+  if (p.fecha_desde || p.fecha_hasta) {
+    const desde = (p.fecha_desde ?? p.fecha_hasta)!;
+    const hasta = (p.fecha_hasta ?? p.fecha_desde)!;
+    parseIso(desde);
+    parseIso(hasta);
+    if (desde > hasta) throw new Error('fecha_desde no puede ser posterior a fecha_hasta.');
+    return { desde, hastaExclusivo: addDays(hasta, 1) };
+  }
+  const current = currentMonthInTimezone(now);
+  const mes = p.mes ?? current.mes;
+  const anio = p.anio ?? current.anio;
+  if (!Number.isInteger(mes) || mes < 1 || mes > 12) throw new Error('El mes debe estar entre 1 y 12.');
+  if (!Number.isInteger(anio) || anio < 2000 || anio > 2100) throw new Error('El año no es válido.');
+  return monthRange(`${anio}-${pad2(mes)}-01`);
+};

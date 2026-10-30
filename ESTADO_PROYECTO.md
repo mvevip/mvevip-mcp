@@ -1,4 +1,4 @@
-# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 22-oct-2026)
+# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 30-oct-2026)
 
 Servidor MCP remoto (TypeScript/Express/MySQL) para que Claude y ChatGPT consulten la BD de MVEVIP.
 Destino: `https://mcp.mvevip.com/mcp` · AWS **us-west-2** (Lambda, SES, stack) + CloudFront/ACM (us-east-1) · RDS MySQL existente `database-mvevip` (us-west-2, público, sin VPC).
@@ -30,6 +30,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - ChatGPT y Claude permitidos como clientes OAuth (verificar redirect URIs al conectar).
 
 - [x] **Paso 3 – Rol OIDC creado (22-oct, desde Claude):** stack `mvevip-mcp-github-oidc` en us-west-2, CREATE_COMPLETE.
+- [x] **Paso 4 – Environment `production` configurado (30-oct, verificado con capturas):** 4 variables
+      (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `ACM_CERTIFICATE_ARN`, `DB_SSL`) y 8 secrets; despliegue restringido a la rama `main`.
 
 ## Verificación AWS (22-oct, cuenta 021891594659, usuario admin-cli)
 - No hay nada del MCP desplegado (sin stacks, Lambdas ni CloudFront `mcp.mvevip.com`). SES sin identidades, en sandbox (200/día).
@@ -40,17 +42,16 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 4 – GitHub → Settings → Environments → `production`**: crear variables y secrets (tabla en `docs/DEPLOY.md`).
-Valores ya conocidos: `AWS_DEPLOY_ROLE_ARN=arn:aws:iam::021891594659:role/mvevip-mcp-server-github-deploy`, `AWS_REGION=us-west-2`,
-`ACM_CERTIFICATE_ARN=arn:aws:acm:us-east-1:021891594659:certificate/1dae9056-0687-434c-a4ca-c20c76a9462f`, `DB_SSL=rds`,
-`DB_HOST=database-mvevip.c98k2yme6fe6.us-west-2.rds.amazonaws.com`, `DB_NAME=vtgsa_ventas`. Sin VPC.
+**Paso 5 – Ejecutar el despliegue:** GitHub → Actions → "Deploy to production" → Run workflow con `ref=main`
+(el environment `production` solo permite desplegar desde `main`). Revisar el log y el resumen del job
+(URL del conector y CNAME de CloudFront para el Paso 6).
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.
-4. GitHub → Settings → Environments → `production`: variables (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION=us-west-2`,
+4. (HECHO) GitHub → Settings → Environments → `production`: variables (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION=us-west-2`,
    `ACM_CERTIFICATE_ARN`, `DB_SSL=rds`, VPC si aplica…) y secrets (`MCP_SIGNING_SECRET`, `ORIGIN_VERIFY_SECRET`,
    `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME=vtgsa_ventas`, `AUTH_DB_USER`, `AUTH_DB_PASSWORD`). Ver tabla en `docs/DEPLOY.md`.
-5. Llevar la rama a `main` (PR si el usuario lo pide) y ejecutar el workflow "Deploy to production" (`ref=main`).
+5. El código ya está en `main` (PR #1). Ejecutar el workflow "Deploy to production" (`ref=main`).
 6. DNS tras el primer despliegue: CNAME `mcp` → CloudFront; 3 CNAME DKIM de SES; solicitar producción en SES.
 7. Crear el primer usuario con `aws lambda invoke` (comando en `docs/DEPLOY.md`, paso 7).
 8. Conectar `https://mcp.mvevip.com/mcp` en Claude y ChatGPT; probar `test_db_connection`.

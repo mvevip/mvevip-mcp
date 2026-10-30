@@ -54,3 +54,7 @@ export const SalesReportInputSchema = z.object({
   ordenar_por: z.string().max(40).optional(),
   direccion: z.enum(['asc', 'desc']).optional(),
 });
+
+export const CuadroVentasInputSchema = z.object({
+  fecha: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'La fecha debe tener formato YYYY-MM-DD').optional(),
+});

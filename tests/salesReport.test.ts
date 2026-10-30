@@ -25,6 +25,7 @@ test('excluye anulados (9, 13), incluye todos los líderes y no duplica por usua
   assert.match(detailSql, /estado NOT IN \(9, 13\)/);
   assert.doesNotMatch(detailSql, /L\.estado|L\.visual/);
   assert.match(detailSql, /GROUP BY id_referencia/);
+  assert.match(detailSql, /id_referencia > 0/);
 });
 
 test('ordenamiento por lista cerrada: no admite texto libre', () => {

@@ -129,7 +129,7 @@ test('flujo completo: usuario + contraseña + código por correo + PKCE + uso en
   assert.equal(init.result.protocolVersion, '2025-03-26');
 
   const list = await (await rpc(token, { jsonrpc: '2.0', id: 2, method: 'tools/list' })).json();
-  assert.equal(list.result.tools.length, 6);
+  assert.deepEqual(list.result.tools.map((t: any) => t.name), ['reporte_ventas_mes', 'cuadro_ventas']);
 
   assert.equal((await rpc(token, { jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
 });
@@ -268,17 +268,16 @@ test('herramienta desconocida y parámetros inválidos devuelven error JSON-RPC'
   const token = await getToken();
   const unknown = await (await rpc(token, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'nope' } })).json();
   assert.equal(unknown.error.code, -32602);
-  const invalid = await (await rpc(token, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'get_table_schema', arguments: {} } })).json();
+  const invalid = await (await rpc(token, { jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'reporte_ventas_mes', arguments: { mes: 13 } } })).json();
   assert.equal(invalid.error.code, -32602);
 });
 
-test('consulta SQL peligrosa se responde con isError sin llegar a la BD', async () => {
+test('las herramientas genéricas de base de datos ya no existen', async () => {
   const token = await getToken();
-  const res = await (await rpc(token, {
-    jsonrpc: '2.0', id: 1, method: 'tools/call',
-    params: { name: 'query_database_sample', arguments: { query: 'DELETE FROM clientes' } }
-  })).json();
-  assert.equal(res.result.isError, true);
+  for (const name of ['test_db_connection', 'describe_database', 'get_table_schema', 'query_database_sample']) {
+    const res = await (await rpc(token, { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: { query: 'SELECT 1' } } })).json();
+    assert.equal(res.error.code, -32602, name);
+  }
 });
 
 test('límite por IP: tras 10 intentos fallidos se bloquea incluso con credenciales correctas', async () => {

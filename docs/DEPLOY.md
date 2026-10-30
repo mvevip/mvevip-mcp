@@ -79,7 +79,7 @@ el acceso en máximo 60 s. En desarrollo local: `npx tsx scripts/auth-admin.ts c
 - **Claude:** Personalizar > Conectores > Agregar conector personalizado > `https://mcp.mvevip.com/mcp`.
 - **ChatGPT:** Ajustes > Conectores (modo desarrollador) > Crear > URL `https://mcp.mvevip.com/mcp`, autenticación OAuth.
 - Se abre el login de MVEVIP: usuario y contraseña → llega el código por correo → ingrésalo → conectado.
-- Prueba pidiendo `test_db_connection`.
+- Prueba pidiendo "¿cómo vamos hoy?" (herramienta `cuadro_ventas`).
 
 ## Operación
 - **Revocar todos los tokens:** cambiar el secret `MCP_SIGNING_SECRET` y desplegar.

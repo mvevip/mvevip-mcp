@@ -38,7 +38,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
-- [x] **Paso 10a – Herramienta `cuadro_ventas` escrita (30-oct, sin desplegar):** `src/mcp/tools/cuadroTool.ts`, parámetro opcional `fecha` (hoy en America/Guayaquil).
+- [x] **Paso 10b – `cuadro_ventas` desplegado (30-oct):** PR #4 fusionado y deploy #8 exitoso.
+- [x] **Paso 10a – Herramienta `cuadro_ventas` escrita (30-oct):** `src/mcp/tools/cuadroTool.ts`, parámetro opcional `fecha` (hoy en America/Guayaquil).
       Devuelve resumen (tarjetas), días laborables, equipos (= tabla `lideres`, sigla con iniciales), grupos (= `usuarios_agrupaciones`, por asesor), líderes por cierres y
       ventas del día por asesor. Reglas acordadas: estados 9 y 13 siempre excluidos (también en Grupos); ventas = `abono_pagado` (SUM `valor_voucher`), NO `pago_cuadro`;
       metas contra comisión; meta diaria = meta mensual / días laborables; laborables = lunes a viernes menos `cuadro_feriados` (una sola vez; el PHP `utiles.php` los restaba dos veces
@@ -66,8 +67,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 10b – Desplegar y probar `cuadro_ventas`:** el código está en la rama `claude/festive-thompson-nd74zw` (typecheck + 65 pruebas OK), requiere PR y merge
-(solo si el usuario lo pide) y luego "Deploy to production" (`ref=main`). Probar en el chat "¿cómo vamos hoy?" y comparar con la pantalla del cuadro.
+**Paso 10c – Probar `cuadro_ventas` en el chat** ("¿cómo vamos hoy?", "ventas de hoy por asesor") y comparar con la pantalla del cuadro.
+Si alguna cifra difiere, revisar: ventas del día (ahora = `abono_pagado`, antes `pago_cuadro`) y Grupos (ahora excluye siempre el estado 13).
 Pendientes aparte: (1) SES: AWS denegó producción (caso 179337882700292) → solo @mvevip.com o correos externos verificados uno a uno.
 (2) Dependencias con avisos de `npm audit` (body-parser y qs con `npm audit fix`; zod requiere v4): el CI está en rojo por eso.
 

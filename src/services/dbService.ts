@@ -62,7 +62,8 @@ class DatabaseService {
    */
   public async executeReadOnlyQuery(
     rawQuery: string,
-    maxRows = 50
+    maxRows = 50,
+    values: Array<string | number> = []
   ): Promise<{ rowCount: number; rows: any[]; truncated: boolean }> {
     const { sql, firstWord, hasLimit } = validateReadOnlySql(rawQuery);
     const cap = Math.min(maxRows, MAX_ROWS_CAP);
@@ -80,7 +81,7 @@ class DatabaseService {
       }
       await connection.query('START TRANSACTION READ ONLY');
       try {
-        const [result] = await connection.query<RowDataPacket[]>({ sql: safeQuery, timeout: QUERY_TIMEOUT_MS });
+        const [result] = await connection.query<RowDataPacket[]>({ sql: safeQuery, values, timeout: QUERY_TIMEOUT_MS });
         const all = Array.isArray(result) ? result : [];
         return { rowCount: Math.min(all.length, cap), rows: all.slice(0, cap), truncated: all.length > cap };
       } finally {

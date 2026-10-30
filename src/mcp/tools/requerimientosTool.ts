@@ -1,11 +1,10 @@
 import { dbService } from '../../services/dbService';
 import { ToolResult } from '../types';
-import { REPORT_TIMEZONE, addDays, currentMonthInTimezone, monthRange, parseIso } from './dates';
+import { REPORT_TIMEZONE, resolveDateRange } from './dates';
 
 const MAX_OUTPUT_CHARS = 100_000;
 const r2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 const num = (v: unknown) => Number(v ?? 0) || 0;
-const pad = (n: number) => String(n).padStart(2, '0');
 
 export const REQ_DETAIL_ORDER_COLUMNS = [
   'fecha_alta', 'fecha_requerimiento', 'fecha_venta', 'valor', 'nombre_cliente', 'asesor'
@@ -25,25 +24,7 @@ export interface RequerimientosParams {
 }
 
 /** Período por fecha de ingreso del requerimiento (fecha_requerimiento): rango explícito o mes completo. */
-export const resolveRequerimientosRange = (
-  p: Pick<RequerimientosParams, 'mes' | 'anio' | 'fecha_desde' | 'fecha_hasta'>,
-  now: Date = new Date()
-): { desde: string; hastaExclusivo: string } => {
-  if (p.fecha_desde || p.fecha_hasta) {
-    const desde = (p.fecha_desde ?? p.fecha_hasta)!;
-    const hasta = (p.fecha_hasta ?? p.fecha_desde)!;
-    parseIso(desde);
-    parseIso(hasta);
-    if (desde > hasta) throw new Error('fecha_desde no puede ser posterior a fecha_hasta.');
-    return { desde, hastaExclusivo: addDays(hasta, 1) };
-  }
-  const current = currentMonthInTimezone(now);
-  const mes = p.mes ?? current.mes;
-  const anio = p.anio ?? current.anio;
-  if (!Number.isInteger(mes) || mes < 1 || mes > 12) throw new Error('El mes debe estar entre 1 y 12.');
-  if (!Number.isInteger(anio) || anio < 2000 || anio > 2100) throw new Error('El año no es válido.');
-  return monthRange(`${anio}-${pad(mes)}-01`);
-};
+export const resolveRequerimientosRange = resolveDateRange;
 
 /**
  * Requerimientos (devoluciones y reclamos de ventas) ingresados en el período. El asesor se resuelve con el mismo

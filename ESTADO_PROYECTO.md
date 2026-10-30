@@ -38,7 +38,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
-- [x] **Paso 13a – Herramienta `requerimientos` escrita (30-oct, sin desplegar):** `src/mcp/tools/requerimientosTool.ts`. Requerimientos = devoluciones y reclamos de ventas de asesores (tabla
+- [x] **Paso 13b – `requerimientos` desplegado (30-oct):** PR #7 fusionado y deploy #11 exitoso.
+- [x] **Paso 13a – Herramienta `requerimientos` escrita (30-oct):** `src/mcp/tools/requerimientosTool.ts`. Requerimientos = devoluciones y reclamos de ventas de asesores (tabla
       `requerimientos`). Reglas acordadas: se cuentan siempre en el mes en que se INGRESARON (`fecha_requerimiento`, tipo date), se muestra también `fecha_venta` y `fecha_alta` (hora de registro);
       su valor se DESCUENTA de la comisión del asesor; el campo `estado` no se usa por ahora. Parámetros: mes, anio, fecha_desde/fecha_hasta (inclusive), agrupar_por (ninguno, asesor), ordenar_por, direccion.
       `reporte_ventas_mes` ganó `incluir_requerimientos`: por asesor agrega requerimientos_cantidad, requerimientos_valor y comision_neta (= comision_asesor − requerimientos_valor; incluye
@@ -84,9 +85,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 13b – Desplegar y probar `requerimientos`** (PR + merge a `main` + "Deploy to production"; solo si el usuario lo pide). Probar en el chat:
-"lista de requerimientos del mes", "¿ingresó un requerimiento hoy?", "ventas por asesor incluido requerimientos". Referencia (octubre 2026, al 30-oct):
-8 requerimientos · valor total 4 134,00.
+**Paso 13c – Probar `requerimientos` en Claude y ChatGPT** (quitar y volver a agregar el conector si no aparece la herramienta nueva): "lista de requerimientos del mes",
+"¿ingresó un requerimiento hoy?", "ventas por asesor incluido requerimientos". Referencia (octubre 2026, al 30-oct): 8 requerimientos · valor total 4 134,00.
 Pendiente de decidir con el usuario: si el `cuadro_ventas` (comisión del mes y avance contra meta) también debe descontar los requerimientos.
 Luego: valores del cuadro que el usuario revisa y enviará como ajustes; nuevas herramientas; usuarios con `aws lambda invoke` (`create-user`), solo @mvevip.com.
 

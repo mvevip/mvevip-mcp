@@ -38,7 +38,8 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
       una sola vez en el chat (guardarla en el gestor; si se pierde: comando `set-password`).
 - [x] **Paso 8 – Conector en producción (30-oct):** login + código por correo OK; `test_db_connection` exitoso desde Claude
       (host RDS, BD `vtgsa_ventas`, MySQL 8.4.8, latencia 41 ms). El MCP ya es funcional.
-- [x] **Paso 12a – Limpieza de herramientas (30-oct, sin desplegar):** a pedido del usuario se eliminaron `test_db_connection`, `describe_database`, `get_table_schema` y
+- [x] **Paso 12b – Limpieza desplegada (30-oct):** PR #6 fusionado y deploy #10 exitoso.
+- [x] **Paso 12a – Limpieza de herramientas (30-oct):** a pedido del usuario se eliminaron `test_db_connection`, `describe_database`, `get_table_schema` y
       `query_database_sample` (código, esquemas, métodos de `dbService` y pruebas). Quedan solo `reporte_ventas_mes` y `cuadro_ventas`. Ya no hay SQL libre desde el chat.
       `MEMORIA_SESION.md` y `referencia/` son históricos y siguen mencionándolas.
 - [x] **Paso 11c – Conector en ChatGPT funcionando (30-oct):** confirmado por el usuario tras el deploy #9; la causa era la URL de retorno nueva de ChatGPT y el metadato con sufijo de ruta.
@@ -77,9 +78,9 @@ Detalle técnico: `MEMORIA.md` · Guía de despliegue paso a paso: `docs/DEPLOY.
 - Plantillas/docs ya adaptados a us-west-2 (cfn-lint limpio, 53 pruebas OK).
 
 ## SIGUIENTE PASO
-**Paso 12b – Desplegar la limpieza de herramientas** (PR + merge a `main` + "Deploy to production"; solo si el usuario lo pide) y verificar en Claude y ChatGPT que solo aparezcan
-`reporte_ventas_mes` y `cuadro_ventas` (si siguen apareciendo las anteriores, quitar y volver a agregar el conector).
-Luego: nuevas herramientas de negocio según lo que pida el usuario; crear usuarios con `aws lambda invoke` (`create-user`), solo @mvevip.com.
+**Paso 12c – Verificar en Claude y ChatGPT que solo aparezcan `reporte_ventas_mes` y `cuadro_ventas`** (si siguen las anteriores, quitar y volver a agregar el conector).
+Luego: nuevas herramientas de negocio según lo que pida el usuario (consultas de referencia → revisión → herramienta con pruebas → PR → deploy → prueba en el chat);
+valores del cuadro que el usuario revisa y enviará como ajustes; crear usuarios con `aws lambda invoke` (`create-user`), solo @mvevip.com.
 
 ## Pasos restantes (en orden)
 3. (HECHO) Rol OIDC para GitHub: desplegar `infra/github-oidc-role.yaml` (us-west-2, `CreateOidcProvider=false`) y obtener `DeployRoleArn`.

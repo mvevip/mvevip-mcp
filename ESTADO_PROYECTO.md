@@ -16,7 +16,7 @@ requerimientos, asistencia y validación de cruces de ventas). Solo lo usan admi
 - Los secretos y contraseñas **no** se guardan en el repo. Las contraseñas generadas de usuarios se entregan una sola vez en el chat y el usuario las guarda en su gestor.
 - Rama de trabajo de la sesión actual: `claude/wonderful-dirac-8op1t3` (la anterior fue `claude/festive-thompson-nd74zw`, ya fusionada) (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
 
-## Estado actual (4 herramientas desplegadas; `validar_cruce_ventas` implementada en la rama, SIN desplegar)
+## Estado actual (todo desplegado en producción)
 Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 
 | Herramienta | Qué da | Archivo |
@@ -25,10 +25,10 @@ Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 | `cuadro_ventas` | El cuadro de la pantalla de la oficina a una fecha: resumen, días laborables, equipos, grupos, líderes por cierres, ventas del día por asesor | `src/mcp/tools/cuadroTool.ts` |
 | `requerimientos` | Devoluciones y reclamos de ventas, contados en el mes en que ingresaron; su valor se descuenta de la comisión | `src/mcp/tools/requerimientosTool.ts` |
 | `asistencia` | Entradas del biométrico y atrasos (lunes a viernes, primera entrada del día, sin salidas); vistas por empleado, día o departamento | `src/mcp/tools/asistenciaTool.ts` |
-| `validar_cruce_ventas` | **(pendiente de PR y despliegue)** Detecta ventas cruzadas: contacto asignado a otro asesor (`CRUCE_CONTACTO`) y cuotas cuyo cliente es de otro asesor (`CRUCE_CUOTA`) | `src/mcp/tools/cruceVentasTool.ts` |
+| `validar_cruce_ventas` | Detecta ventas cruzadas: contacto asignado a otro asesor (`CRUCE_CONTACTO`) y cuotas cuyo cliente es de otro asesor (`CRUCE_CUOTA`) | `src/mcp/tools/cruceVentasTool.ts` |
 
 - Código: 82 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
-- Último despliegue: workflow "Deploy to production" **#13** (PR #9). `/health` = 200.
+- Último despliegue: workflow "Deploy to production" **#14** (PR #11, 9-nov). `/health` = 200.
 - Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
 - SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
 - Conector de ChatGPT funcionando (se corrigió el metadato `/.well-known/oauth-protected-resource/mcp` y se permitieron sus URL de retorno `https://chatgpt.com/connector/oauth/<id>`).
@@ -53,6 +53,5 @@ Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 7. **Operación:** crear usuarios nuevos cuando se necesiten (comando en `docs/DEPLOY.md`, solo `@mvevip.com`); para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 
 ## SIGUIENTE PASO
-`validar_cruce_ventas` está implementada, probada (82 pruebas, typecheck, paquete y audit en 0) y subida a la rama, pero **no tiene PR ni despliegue**. El `GRANT` de `cli_vendedor` ya está aplicado.
-Cuando el usuario diga "crea el PR y despliega": PR → merge → "Deploy to production" (`ref=main`) → verificar `/health` → que el usuario pruebe en el chat (quitar y volver a agregar el conector) y compare con octubre (448 ventas; con solo `id_lista`: 5 cruces de contacto, 13 de cuota, 111 sin nota; el respaldo por documento reduce los sin nota).
-Después, las opciones anteriores: **(a)** definir horas trabajadas, feriados y ausentes de `asistencia`; **(b)** otra herramienta nueva; **(c)** limpiar archivos obsoletos; **(d)** crear más usuarios del MCP.
+`validar_cruce_ventas` quedó desplegada (PR #11, despliegue #14, `/health` = 200). Falta que el usuario la pruebe en el chat (quitar y volver a agregar el conector para refrescar la lista) y compare con octubre: 448 ventas; con solo `id_lista` hubo 5 cruces de contacto, 13 de cuota y 111 sin nota (el respaldo por documento debería reducir los sin nota). Si el respaldo por documento es lento, proponer un índice sobre `notas_registros.documento` (lo crea el usuario).
+Después, las opciones: **(a)** definir horas trabajadas, feriados y ausentes de `asistencia`; **(b)** otra herramienta nueva; **(c)** limpiar archivos obsoletos; **(d)** crear más usuarios del MCP.

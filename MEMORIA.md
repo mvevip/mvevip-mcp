@@ -62,7 +62,7 @@ Claude / ChatGPT → CloudFront (mcp.mvevip.com, ACM) → Lambda Function URL (B
 - Parámetros: `mes`/`anio` o `fecha_desde`/`fecha_hasta` (inclusive; una sola fecha = ese día), `agrupar_por` (ninguno, asesor), `ordenar_por`, `direccion`. Observaciones recortadas a 500 caracteres. Asesor: nombre de `mve_usuarios` (o `usuarios.usuario_crm`).
 - Referencia de octubre 2026 (al 30-oct): 8 requerimientos, valor total 4 134,00.
 
-### `validar_cruce_ventas` (`cruceVentasTool.ts`) — detecta ventas cruzadas (implementada 9-nov, pendiente de despliegue)
+### `validar_cruce_ventas` (`cruceVentasTool.ts`) — detecta ventas cruzadas (desplegada 9-nov, PR #11)
 - Período por fecha de venta (`mes`/`anio` o `fecha_desde`/`fecha_hasta`), filtro opcional `asesor` (búsqueda parcial). Estados 9 y 13 excluidos. Devuelve totales, resumen por asesor y el detalle solo de las ventas con hallazgos (máx. 500).
 - **Equivalencia de IDs** (confirmada con datos): `registros.id_vendedor` = `usuarios.id_referencia`; `notas_registros.asignado` = `usuarios.id_usuario`; `mve_clientes.cli_vendedor` = `usuarios.id_usuario_crm`.
 - **Regla 1 (todas las ventas):** la nota del contacto debe estar asignada al asesor de la venta. Se enlaza por `registros.id_lista` = `notas_registros.id_lista` (PK, rápido). Si la venta no tiene nota, respaldo por `documento` en una sola pasada por lotes de 50 (`documento` NO tiene índice): se toma la última asignación (`fecha_asignacion`, luego `id_lista`) y, si hay notas de asesores distintos, se agrega una observación. Resultados: `OK`, `CRUCE_CONTACTO`, `SIN_NOTA`, `NOTA_SIN_ASIGNAR`, `SIN_ASESOR`.
@@ -99,4 +99,4 @@ Claude / ChatGPT → CloudFront (mcp.mvevip.com, ACM) → Lambda Function URL (B
 - **7-oct-2026:** primer servidor Docker local con clave corporativa (`MEMORIA_SESION.md`, histórico).
 - **22-oct-2026:** seguridad, OAuth + PKCE, login con código por correo, BD de autenticación, CI/CD, región us-west-2, rol OIDC (PR #1).
 - **30-oct-2026:** environment `production`, primer despliegue, DNS, SES, usuarios, conectores (Claude y ChatGPT). Herramientas: `reporte_ventas_mes` (PR #2, #3), `cuadro_ventas` (PR #4), corrección de dependencias y de ChatGPT (PR #5), eliminación de herramientas genéricas (PR #6), `requerimientos` (PR #7), `asistencia` (PR #8 y #9). Despliegues #4 a #13.
-- **9-nov-2026:** CI verificado en verde; `validar_cruce_ventas` implementada (rama `claude/wonderful-dirac-8op1t3`), pendiente de PR y despliegue.
+- **9-nov-2026:** CI verificado en verde; `validar_cruce_ventas` implementada (rama `claude/wonderful-dirac-8op1t3`), desplegada (PR #11, despliegue #14).

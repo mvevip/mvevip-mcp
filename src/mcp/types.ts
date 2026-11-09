@@ -72,3 +72,11 @@ export const AsistenciaInputSchema = z.object({
   ordenar_por: z.string().max(40).optional(),
   direccion: z.enum(['asc', 'desc']).optional(),
 });
+
+export const ValidarCruceVentasInputSchema = z.object({
+  mes: z.number().int().min(1).max(12).optional(),
+  anio: z.number().int().min(2000).max(2100).optional(),
+  fecha_desde: IsoDate.optional(),
+  fecha_hasta: IsoDate.optional(),
+  asesor: z.string().max(60).optional(),
+});

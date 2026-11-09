@@ -1,6 +1,6 @@
 # MEMORIA TÉCNICA — MVEVIP REMOTE MCP SERVER
 
-**Proyecto:** servidor Remote MCP de MVEVIP (`mvevip-mcp`) · **Actualizada:** 30-oct-2026 (cierre de sesión)
+**Proyecto:** servidor Remote MCP de MVEVIP (`mvevip-mcp`) · **Actualizada:** 9-nov-2026
 **Repositorio:** https://github.com/mvevip/mvevip-mcp · **Estado y pendientes:** `ESTADO_PROYECTO.md` · **Despliegue/operación:** `docs/DEPLOY.md`
 
 ---
@@ -32,7 +32,7 @@ Claude / ChatGPT → CloudFront (mcp.mvevip.com, ACM) → Lambda Function URL (B
 
 ## 3. Permisos de base de datos (los ejecuta el usuario; Claude solo entrega el script)
 - **`mcp_ro`** (secrets `DB_USER`, `DB_NAME=vtgsa_ventas`): `SELECT` sobre `vtgsa_ventas.*` y `SELECT` **por columna** en:
-  - `mve.mve_clientes` (cli_codigo, cli_apellido, cli_nombre, cli_ciudad, cli_fecha_ingreso), `mve.mve_geo_ciudades` (id, nombre), `mve.mve_usuarios` (usu_codigo, usu_apellido, usu_nombre).
+  - `mve.mve_clientes` (cli_codigo, cli_apellido, cli_nombre, cli_ciudad, cli_fecha_ingreso, cli_vendedor), `mve.mve_geo_ciudades` (id, nombre), `mve.mve_usuarios` (usu_codigo, usu_apellido, usu_nombre).
   - `mvevip_biometrico.mve_asistencias` (`timestamp`, user_id_biometrico, dispositivo_id, punch — `punch` ya no se usa), `mve_usuarios` (user_id_biometrico, nombre, departamento_id, pico_placa_dia, pico_placa_hora), `mve_departamentos` (id, nombre, hora_entrada, hora_salida), `mve_dispositivos` (id, nombre).
 - **`mcp_auth`** (secrets `AUTH_DB_USER`, `AUTH_DB_PASSWORD`): CREATE, INDEX, SELECT, INSERT, UPDATE, DELETE solo sobre `mvevip_mcp_auth`.
 - Una herramienta nueva que lea tablas o columnas nuevas necesita su `GRANT` por columna (mínimo privilegio) **antes** de desplegar; si se despliega antes, la herramienta falla por permisos.
@@ -62,6 +62,15 @@ Claude / ChatGPT → CloudFront (mcp.mvevip.com, ACM) → Lambda Function URL (B
 - Parámetros: `mes`/`anio` o `fecha_desde`/`fecha_hasta` (inclusive; una sola fecha = ese día), `agrupar_por` (ninguno, asesor), `ordenar_por`, `direccion`. Observaciones recortadas a 500 caracteres. Asesor: nombre de `mve_usuarios` (o `usuarios.usuario_crm`).
 - Referencia de octubre 2026 (al 30-oct): 8 requerimientos, valor total 4 134,00.
 
+### `validar_cruce_ventas` (`cruceVentasTool.ts`) — detecta ventas cruzadas (implementada 9-nov, pendiente de despliegue)
+- Período por fecha de venta (`mes`/`anio` o `fecha_desde`/`fecha_hasta`), filtro opcional `asesor` (búsqueda parcial). Estados 9 y 13 excluidos. Devuelve totales, resumen por asesor y el detalle solo de las ventas con hallazgos (máx. 500).
+- **Equivalencia de IDs** (confirmada con datos): `registros.id_vendedor` = `usuarios.id_referencia`; `notas_registros.asignado` = `usuarios.id_usuario`; `mve_clientes.cli_vendedor` = `usuarios.id_usuario_crm`.
+- **Regla 1 (todas las ventas):** la nota del contacto debe estar asignada al asesor de la venta. Se enlaza por `registros.id_lista` = `notas_registros.id_lista` (PK, rápido). Si la venta no tiene nota, respaldo por `documento` en una sola pasada por lotes de 50 (`documento` NO tiene índice): se toma la última asignación (`fecha_asignacion`, luego `id_lista`) y, si hay notas de asesores distintos, se agrega una observación. Resultados: `OK`, `CRUCE_CONTACTO`, `SIN_NOTA`, `NOTA_SIN_ASIGNAR`, `SIN_ASESOR`.
+- **Regla 2 (solo cuotas):** `tipo IN (2, 22)` (categoría "Cuota"; `es_cuota` vale 0 siempre, no se usa). El dueño es `cli_vendedor`; distinto del asesor = `CRUCE_CUOTA`; vacío o 0 = `CUOTA_SIN_DUENO`. `id_vendedor_reasignado` se ignora (decisión del usuario).
+- Solo `CRUCE_CONTACTO` y `CRUCE_CUOTA` son cruces; el resto son casos sin información suficiente.
+- Referencia octubre 2026 (448 ventas, solo `id_lista`): 5 cruces de contacto, 13 de cuota, 111 sin nota, 2 nota sin asignar. La prueba `tests/cruceVentas.test.ts` las reproduce. La venta 25783 (vendedor 48 → usuario 46, nota 923016) es correcta.
+- Permiso añadido: `GRANT SELECT (cli_vendedor) ON mve.mve_clientes TO 'mcp_ro'@'%'` (aplicado).
+
 ### `asistencia` (`asistenciaTool.ts`) — base `mvevip_biometrico` (reglas tomadas de `biometrico.php`)
 - **Solo entradas, de lunes a viernes.** El campo `punch` del dispositivo **no es confiable** (punch 0: 11 168 entradas y 2 516 salidas por hora; punch 1: 2 553 entradas y 10 952 salidas), por eso **no se usa**: una marcación es entrada si su hora cae antes del punto medio entre `hora_entrada` y `hora_salida` del departamento del empleado. Las salidas nunca se consideran.
 - Departamentos: todos con entrada 09:45; salidas 18:00 a 19:00 (3 = CALL CENTER, 18:30). `timestamp` es DATETIME (sin conversión de zona).
@@ -90,3 +99,4 @@ Claude / ChatGPT → CloudFront (mcp.mvevip.com, ACM) → Lambda Function URL (B
 - **7-oct-2026:** primer servidor Docker local con clave corporativa (`MEMORIA_SESION.md`, histórico).
 - **22-oct-2026:** seguridad, OAuth + PKCE, login con código por correo, BD de autenticación, CI/CD, región us-west-2, rol OIDC (PR #1).
 - **30-oct-2026:** environment `production`, primer despliegue, DNS, SES, usuarios, conectores (Claude y ChatGPT). Herramientas: `reporte_ventas_mes` (PR #2, #3), `cuadro_ventas` (PR #4), corrección de dependencias y de ChatGPT (PR #5), eliminación de herramientas genéricas (PR #6), `requerimientos` (PR #7), `asistencia` (PR #8 y #9). Despliegues #4 a #13.
+- **9-nov-2026:** CI verificado en verde; `validar_cruce_ventas` implementada (rama `claude/wonderful-dirac-8op1t3`), pendiente de PR y despliegue.

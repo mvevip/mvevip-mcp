@@ -22,11 +22,13 @@ import {
   SalesReportInputSchema,
   CuadroVentasInputSchema,
   RequerimientosInputSchema,
+  ValidarCruceVentasInputSchema,
   AsistenciaInputSchema
 } from './mcp/types';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
 import { handleCuadro } from './mcp/tools/cuadroTool';
 import { handleRequerimientos } from './mcp/tools/requerimientosTool';
+import { handleCruceVentas } from './mcp/tools/cruceVentasTool';
 import { handleAsistencia } from './mcp/tools/asistenciaTool';
 
 dotenv.config();
@@ -517,6 +519,20 @@ const MCP_TOOLS: McpToolDefinition[] = [
     }
   },
   {
+    name: 'validar_cruce_ventas',
+    description: 'Valida que las ventas registradas no estén cruzadas (solo lectura). Regla 1: el contacto de la venta (nota en notas_registros) debe estar asignado al mismo asesor que hizo la venta; si está asignado a otro asesor es un CRUCE_CONTACTO (si la venta no tiene nota enlazada se busca por documento y se toma la última asignación, con observación si hay varios asesores). Regla 2: si la venta es una cuota, el cliente debe pertenecer (cli_vendedor) al asesor de la venta; si no, es un CRUCE_CUOTA. SIN_NOTA, NOTA_SIN_ASIGNAR, CUOTA_SIN_DUENO y SIN_ASESOR no son cruces: falta información para decidir. Por defecto revisa el mes actual (America/Guayaquil, por fecha de venta, sin anuladas) y devuelve totales, resumen por asesor y el detalle de las ventas con hallazgos. Úsala para "¿hay ventas cruzadas este mes?", "cruces de octubre" o los cruces de un asesor.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mes: { type: 'number', description: 'Mes 1-12. Omitir para el mes actual.' },
+        anio: { type: 'number', description: 'Año (ej: 2026). Omitir para el año actual.' },
+        fecha_desde: { type: 'string', description: 'Inicio del rango (YYYY-MM-DD), inclusive. Si se indica, reemplaza a mes y anio.' },
+        fecha_hasta: { type: 'string', description: 'Fin del rango (YYYY-MM-DD), inclusive. Si solo se indica una de las dos fechas, se usa un solo día.' },
+        asesor: { type: 'string', description: 'Parte del nombre del asesor de la venta. Omitir para todos.' }
+      }
+    }
+  },
+  {
     name: 'asistencia',
     description: 'Asistencia del personal según el biométrico: horas de ENTRADA y atrasos (las salidas nunca se consideran; sábados y domingos tampoco). Una marcación cuenta como entrada por su hora del día (antes del punto medio entre la hora de entrada y de salida del departamento), sin usar el campo punch del dispositivo. Hora esperada = la de pico y placa del empleado si ese día le corresponde, si no la de entrada de su departamento (hoy 09:45). Atraso = minutos después de la hora esperada, solo en la primera entrada del día de cada empleado. Por defecto devuelve esas entradas del mes actual (America/Guayaquil) con minutos de atraso; con agrupar_por da el resumen por empleado, por día o por departamento (días con marcación, atrasos, minutos totales, hora promedio de ingreso). Siempre trae los totales. Si un filtro de departamento o dispositivo no encuentra nada, devuelve los nombres válidos. Úsala para "¿quién llegó tarde hoy?", "atrasos de abril por empleado", "entradas de Juan esta semana". No informa ausencias (quién no marcó).',
     inputSchema: {
@@ -608,6 +624,11 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'requerimientos': {
             const parsed = RequerimientosInputSchema.parse(toolArgs);
             return rpcResult(await handleRequerimientos(parsed));
+          }
+
+          case 'validar_cruce_ventas': {
+            const parsed = ValidarCruceVentasInputSchema.parse(toolArgs);
+            return rpcResult(await handleCruceVentas(parsed));
           }
 
           case 'asistencia': {

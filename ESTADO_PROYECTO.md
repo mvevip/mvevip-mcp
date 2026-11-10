@@ -1,4 +1,4 @@
-# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 9-nov-2026)
+# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 10-nov-2026)
 
 Servidor MCP remoto (TypeScript/Express/MySQL) para que Claude y ChatGPT consulten reportes de MVEVIP (ventas, cuadro de ventas,
 requerimientos, asistencia y validación de cruces de ventas). Solo lo usan administradores de la empresa con correo `@mvevip.com`.
@@ -14,9 +14,9 @@ requerimientos, asistencia y validación de cruces de ventas). Solo lo usan admi
 - Avanzar **de a un paso**, esperando la confirmación del usuario.
 - **Solo crear PR cuando el usuario lo pide.** Cuando dice "crea el PR y despliega": crear PR → fusionar (`merge`) → ejecutar el workflow "Deploy to production" con `ref=main` → verificar → actualizar este archivo.
 - Los secretos y contraseñas **no** se guardan en el repo. Las contraseñas generadas de usuarios se entregan una sola vez en el chat y el usuario las guarda en su gestor.
-- Rama de trabajo de la sesión actual: `claude/wonderful-dirac-8op1t3` (la anterior fue `claude/festive-thompson-nd74zw`, ya fusionada) (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
+- Rama de trabajo de la sesión actual: `claude/eager-bell-u1yr44` (las anteriores, `claude/wonderful-dirac-8op1t3` y `claude/festive-thompson-nd74zw`, ya fusionadas) (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
 
-## Estado actual (4 herramientas desplegadas; `validar_cruce_ventas` implementada en la rama, SIN desplegar)
+## Estado actual (todo desplegado en producción)
 Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 
 | Herramienta | Qué da | Archivo |
@@ -25,10 +25,10 @@ Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 | `cuadro_ventas` | El cuadro de la pantalla de la oficina a una fecha: resumen, días laborables, equipos, grupos, líderes por cierres, ventas del día por asesor | `src/mcp/tools/cuadroTool.ts` |
 | `requerimientos` | Devoluciones y reclamos de ventas, contados en el mes en que ingresaron; su valor se descuenta de la comisión | `src/mcp/tools/requerimientosTool.ts` |
 | `asistencia` | Entradas del biométrico y atrasos (lunes a viernes, primera entrada del día, sin salidas); vistas por empleado, día o departamento | `src/mcp/tools/asistenciaTool.ts` |
-| `validar_cruce_ventas` | **(pendiente de PR y despliegue)** Detecta ventas cruzadas: contacto asignado a otro asesor (`CRUCE_CONTACTO`) y cuotas cuyo cliente es de otro asesor (`CRUCE_CUOTA`) | `src/mcp/tools/cruceVentasTool.ts` |
+| `validar_cruce_ventas` | Detecta ventas cruzadas: contacto asignado a otro asesor (`CRUCE_CONTACTO`) y cuotas cuyo cliente es de otro asesor (`CRUCE_CUOTA`) | `src/mcp/tools/cruceVentasTool.ts` |
 
 - Código: 82 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
-- Último despliegue: workflow "Deploy to production" **#13** (PR #9). `/health` = 200.
+- Último despliegue: workflow "Deploy to production" **#14** (PR #11, 9-nov). `/health` = 200.
 - Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
 - SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
 - Conector de ChatGPT funcionando (se corrigió el metadato `/.well-known/oauth-protected-resource/mcp` y se permitieron sus URL de retorno `https://chatgpt.com/connector/oauth/<id>`).
@@ -40,19 +40,15 @@ Herramientas MCP (solo lectura, sin SQL libre desde el chat):
    Claude escribe la herramienta con pruebas (incluida una que reproduce cifras reales de la pantalla del usuario) → PR → merge → deploy → el usuario prueba en el chat y compara cifras.
 4. Se eliminaron las herramientas genéricas (`test_db_connection`, `describe_database`, `get_table_schema`, `query_database_sample`) para que no haya SQL libre.
 
-## PENDIENTES (por prioridad)
-1. **`asistencia` — definiciones del negocio:**
-   a. *Horas trabajadas*: el usuario las quiere, pero también dijo que las salidas nunca se consideran; falta aclarar el cálculo (¿primera entrada a última marcación del día, u otro?).
-   b. *Feriados*: hoy solo se excluyen sábados y domingos; decidir si se excluyen feriados (tabla `cuadro_feriados` de `vtgsa_ventas`, ya usada por el cuadro).
-   c. *Ausentes* (quién no marcó): etapa 2; requiere lista de empleados activos y días laborables.
-2. **Cuadro de ventas:** el usuario revisará los valores y enviará ajustes si hace falta. Hoy el cuadro **no** descuenta los requerimientos de la comisión (decidido: así está bien por ahora). Rutas del PHP no incluidas: islas, ranking, dados, parejas, `cuadro-octubre`, pantalla (recursos/mensajes/música).
-3. **`requerimientos`:** el campo `estado` no se usa por ahora (decisión del usuario).
-4. ~~CI de GitHub~~ verificado el 9-nov: en verde (ejecuciones #15 a #20).
-5. **Seguridad (más adelante):** RDS público (acordado, otro proyecto); `mcp_ro` conserva `SELECT` sobre toda `vtgsa_ventas` aunque ya no haya SQL libre (se podría reducir a las tablas usadas); el `GRANT` de `punch` en `mve_asistencias` ya no se usa y podría revocarse; restringir herramientas por usuario si algún día se necesita.
-6. **Limpieza del repo (opcional):** `build_zip.ps1`, `deploy_aws.ps1`, `docker-compose.yml`/`Dockerfile` (flujo anterior), `MEMORIA_SESION.md` y `referencia/` son históricos o de otro proyecto.
-7. **Operación:** crear usuarios nuevos cuando se necesiten (comando en `docs/DEPLOY.md`, solo `@mvevip.com`); para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
+## PENDIENTES (cerrados por el usuario el 10-nov; se reabren solo si el usuario lo pide)
+1. ~~`validar_cruce_ventas`~~ probada por el usuario en el chat: correcta.
+2. ~~`asistencia`~~ funciona como está. Horas trabajadas, feriados y ausentes quedan para cuando el usuario lo pida.
+3. ~~`cuadro_ventas`~~ y ~~`requerimientos`~~ funcionan como están; los ajustes (rutas del PHP no incluidas, descuento de requerimientos en el cuadro, uso del campo `estado`) se harán cuando el usuario los notifique.
+4. ~~CI de GitHub~~ en verde.
+5. **Seguridad:** se deja como está hasta resolver otros proyectos (RDS público, permisos de `mcp_ro`, `GRANT` de `punch`).
+6. ~~Limpieza del repo~~ hecha el 10-nov: lo histórico quedó en `archivo/` (ver `archivo/README.md`: `MEMORIA_SESION.md`, Docker, scripts PowerShell y `referencia/`); `.dockerignore` eliminado.
+7. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 
 ## SIGUIENTE PASO
-`validar_cruce_ventas` está implementada, probada (82 pruebas, typecheck, paquete y audit en 0) y subida a la rama, pero **no tiene PR ni despliegue**. El `GRANT` de `cli_vendedor` ya está aplicado.
-Cuando el usuario diga "crea el PR y despliega": PR → merge → "Deploy to production" (`ref=main`) → verificar `/health` → que el usuario pruebe en el chat (quitar y volver a agregar el conector) y compare con octubre (448 ventas; con solo `id_lista`: 5 cruces de contacto, 13 de cuota, 111 sin nota; el respaldo por documento reduce los sin nota).
-Después, las opciones anteriores: **(a)** definir horas trabajadas, feriados y ausentes de `asistencia`; **(b)** otra herramienta nueva; **(c)** limpiar archivos obsoletos; **(d)** crear más usuarios del MCP.
+No hay pasos pendientes. El proyecto está completo y desplegado (5 herramientas). La limpieza del repo está hecha en la rama `claude/eager-bell-u1yr44` y **no tiene PR** (solo documentación y archivos movidos; no requiere despliegue).
+Cuando el usuario lo pida: crear el PR de esta rama; nuevas herramientas, ajustes de `asistencia`, `cuadro_ventas` o `requerimientos`, usuarios nuevos o revisión de seguridad.

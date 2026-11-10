@@ -16,7 +16,7 @@ requerimientos, asistencia y validación de cruces de ventas). Solo lo usan admi
 - Los secretos y contraseñas **no** se guardan en el repo. Las contraseñas generadas de usuarios se entregan una sola vez en el chat y el usuario las guarda en su gestor.
 - Rama de trabajo de la sesión actual: `claude/eager-bell-u1yr44` (las anteriores, `claude/wonderful-dirac-8op1t3` y `claude/festive-thompson-nd74zw`, ya fusionadas) (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
 
-## Estado actual (todo desplegado en producción)
+## Estado actual (todo desplegado en producción; 8 herramientas)
 Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 
 | Herramienta | Qué da | Archivo |
@@ -28,7 +28,7 @@ Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 | `validar_cruce_ventas` | Detecta ventas cruzadas: contacto asignado a otro asesor (`CRUCE_CONTACTO`) y cuotas cuyo cliente es de otro asesor (`CRUCE_CUOTA`) | `src/mcp/tools/cruceVentasTool.ts` |
 
 - Código: 82 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
-- Último despliegue: workflow "Deploy to production" **#14** (PR #11, 9-nov). `/health` = 200.
+- Último despliegue: workflow "Deploy to production" **#15** (PR #13, 10-nov). `/health` = 200.
 - Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
 - SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
 - Conector de ChatGPT funcionando (se corrigió el metadato `/.well-known/oauth-protected-resource/mcp` y se permitieron sus URL de retorno `https://chatgpt.com/connector/oauth/<id>`).
@@ -49,12 +49,12 @@ Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 6. ~~Limpieza del repo~~ hecha el 10-nov: lo histórico quedó en `archivo/` (ver `archivo/README.md`: `MEMORIA_SESION.md`, Docker, scripts PowerShell y `referencia/`); `.dockerignore` eliminado.
 7. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 
-## EN CURSO: herramientas `buscar_base`, `aplicar_base` y `encerar_cupos` (código listo, SIN desplegar)
+## `buscar_base`, `aplicar_base` y `encerar_cupos` (desplegadas el 10-nov: PR #13, despliegue #15, `/health` = 200)
 Liberan "base" (contactos de `notas_registros`) sin llamadas para reasignarla. Reglas, seguridad y proceso: `MEMORIA.md` sección 4. Lo hecho el 10-nov:
 - `GRANT` de `mcp_base` (RDS) y de `lectura` (Asterisk, base `asterisk`) aplicados y verificados; clave de `mcp_base` cambiada.
 - Servicio **`asterisk-gateway/`** instalado en Server Docker y probado (cifras iguales al Excel); HTTPS en `https://bases.mvevip.com` (nginx + certbot, vence 8-feb-2027; renovación automática); desde fuera de la oficina responde. Tiene un reinicio del sistema pendiente (kernel).
 - Código: `src/mcp/tools/baseTool.ts`, `src/services/dbWriteService.ts`, `src/services/asteriskClient.ts`, esquemas Zod, definiciones y despacho en `src/index.ts`, parámetros y secrets en `infra/template.yaml` y `deploy.yml`. 109 pruebas (`tests/baseBusqueda.test.ts` reproduce los 12 contactos reales del Excel: se liberan 5 con `DIN-5`), typecheck, empaquetado y `npm audit` en 0.
-- **Falta antes de desplegar:** que el usuario cargue en el environment `production` de GitHub los secrets `ASTERISK_API_URL` (`https://bases.mvevip.com`), `ASTERISK_API_TOKEN` (el `GATEWAY_TOKEN` del `.env` de Server Docker), `DB_WRITE_USER` (`mcp_base`) y `DB_WRITE_PASSWORD` (la clave nueva). Si se despliega sin ellos, las herramientas responden que no están configuradas (no escriben).
+- Las herramientas dependen de 4 secrets del environment `production` (`ASTERISK_API_URL`, `ASTERISK_API_TOKEN`, `DB_WRITE_USER`, `DB_WRITE_PASSWORD`); si falta alguno, responden que no están configuradas y no escriben.
 
 ## SIGUIENTE PASO
-El usuario carga los 4 secrets; luego "crea el PR y despliega" (PR → merge → "Deploy to production" `ref=main` → `/health`). Después prueba en el chat (quitar y volver a agregar el conector): primero `buscar_base` de un rango pequeño, comparar con su Excel, y solo entonces `aplicar_base`. Opciones posteriores: ajustes a las herramientas, usuarios nuevos del MCP, seguridad (RDS público, permisos de `mcp_ro`).
+El usuario prueba en el chat (quitar y volver a agregar el conector): primero `buscar_base` de un rango pequeño y compara con su Excel; solo después confirma `aplicar_base`. Pendiente menor: reiniciar Server Docker (kernel nuevo) en un momento tranquilo y repetir `https://bases.mvevip.com/health`. Opciones posteriores: ajustes a las herramientas, usuarios nuevos del MCP, seguridad (RDS público, permisos de `mcp_ro`).

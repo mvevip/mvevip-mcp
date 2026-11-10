@@ -63,10 +63,11 @@ class DatabaseService {
   public async executeReadOnlyQuery(
     rawQuery: string,
     maxRows = 50,
-    values: Array<string | number> = []
+    values: Array<string | number> = [],
+    hardCap = MAX_ROWS_CAP
   ): Promise<{ rowCount: number; rows: any[]; truncated: boolean }> {
     const { sql, firstWord, hasLimit } = validateReadOnlySql(rawQuery);
-    const cap = Math.min(maxRows, MAX_ROWS_CAP);
+    const cap = Math.min(maxRows, hardCap);
 
     // El LIMIT va en línea nueva por si la consulta termina en un comentario "-- ..."
     const safeQuery =

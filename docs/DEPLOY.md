@@ -52,6 +52,7 @@ Variables:
 
 Secrets: `MCP_SIGNING_SECRET` (`openssl rand -hex 32`), `ORIGIN_VERIFY_SECRET` (`openssl rand -hex 32`),
 `DB_HOST`, `DB_USER` (`mcp_ro`), `DB_PASSWORD`, `DB_NAME`, `AUTH_DB_USER` (`mcp_auth`), `AUTH_DB_PASSWORD`.
+Para `buscar_base`, `aplicar_base` y `encerar_cupos` (opcionales; sin ellos esas herramientas responden que no están configuradas): `DB_WRITE_USER` (`mcp_base`), `DB_WRITE_PASSWORD`, `ASTERISK_API_URL` (`https://bases.mvevip.com`) y `ASTERISK_API_TOKEN` (el `GATEWAY_TOKEN` del servicio `asterisk-gateway`, ver `asterisk-gateway/README.md`).
 Opcional: *Required reviewers* para aprobar cada despliegue.
 
 ### 5. Llevar los cambios a `main` y desplegar

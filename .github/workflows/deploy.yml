@@ -77,6 +77,10 @@ jobs:
               DbPassword="$DB_PASSWORD" \
               DbName="$DB_NAME" \
               DbSsl="${DB_SSL:-}" \
+              DbWriteUser="${DB_WRITE_USER:-}" \
+              DbWritePassword="${DB_WRITE_PASSWORD:-}" \
+              AsteriskApiUrl="${ASTERISK_API_URL:-}" \
+              AsteriskApiToken="${ASTERISK_API_TOKEN:-}" \
               AuthDbName="${AUTH_DB_NAME:-mvevip_mcp_auth}" \
               AuthDbUser="$AUTH_DB_USER" \
               AuthDbPassword="$AUTH_DB_PASSWORD" \
@@ -94,6 +98,10 @@ jobs:
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           DB_NAME: ${{ secrets.DB_NAME }}
+          DB_WRITE_USER: ${{ secrets.DB_WRITE_USER }}
+          DB_WRITE_PASSWORD: ${{ secrets.DB_WRITE_PASSWORD }}
+          ASTERISK_API_URL: ${{ secrets.ASTERISK_API_URL }}
+          ASTERISK_API_TOKEN: ${{ secrets.ASTERISK_API_TOKEN }}
           AUTH_DB_USER: ${{ secrets.AUTH_DB_USER }}
           AUTH_DB_PASSWORD: ${{ secrets.AUTH_DB_PASSWORD }}
           ORIGIN_VERIFY_SECRET: ${{ secrets.ORIGIN_VERIFY_SECRET }}

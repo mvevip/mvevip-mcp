@@ -129,7 +129,7 @@ test('flujo completo: usuario + contraseña + código por correo + PKCE + uso en
   assert.equal(init.result.protocolVersion, '2025-03-26');
 
   const list = await (await rpc(token, { jsonrpc: '2.0', id: 2, method: 'tools/list' })).json();
-  assert.deepEqual(list.result.tools.map((t: any) => t.name), ['reporte_ventas_mes', 'cuadro_ventas', 'requerimientos', 'validar_cruce_ventas', 'asistencia', 'buscar_base', 'aplicar_base', 'encerar_cupos']);
+  assert.deepEqual(list.result.tools.map((t: any) => t.name), ['reporte_ventas_mes', 'cuadro_ventas', 'requerimientos', 'validar_cruce_ventas', 'asistencia', 'buscar_base', 'aplicar_base', 'encerar_cupos', 'historial_base']);
 
   assert.equal((await rpc(token, { jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
 });

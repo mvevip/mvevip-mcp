@@ -2,8 +2,8 @@ import mysql, { Pool, PoolConnection, ResultSetHeader } from 'mysql2/promise';
 
 /** Conexión de la transacción de escritura (solo las operaciones que las herramientas necesitan). */
 export interface WriteTx {
-  ejecutar(sql: string, values?: Array<string | number>): Promise<{ affectedRows: number }>;
-  consultar(sql: string, values?: Array<string | number>): Promise<any[]>;
+  ejecutar(sql: string, values?: Array<string | number | null>): Promise<{ affectedRows: number; insertId: number }>;
+  consultar(sql: string, values?: Array<string | number | null>): Promise<any[]>;
 }
 
 /**
@@ -46,7 +46,7 @@ class WriteDatabase {
     const tx: WriteTx = {
       ejecutar: async (sql, values = []) => {
         const [header] = await connection.query<ResultSetHeader>({ sql, values, timeout: 25000 });
-        return { affectedRows: header.affectedRows };
+        return { affectedRows: header.affectedRows, insertId: header.insertId };
       },
       consultar: async (sql, values = []) => {
         const [rows] = await connection.query({ sql, values, timeout: 25000 });

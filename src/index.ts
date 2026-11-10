@@ -26,12 +26,14 @@ import {
   BuscarBaseInputSchema,
   AplicarBaseInputSchema,
   EncerarCuposInputSchema,
+  HistorialBaseInputSchema,
   AsistenciaInputSchema
 } from './mcp/types';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
 import { handleCuadro } from './mcp/tools/cuadroTool';
 import { handleRequerimientos } from './mcp/tools/requerimientosTool';
 import { handleBuscarBase, handleAplicarBase, handleEncerarCupos } from './mcp/tools/baseTool';
+import { handleHistorialBase } from './mcp/tools/historialBaseTool';
 import { handleCruceVentas } from './mcp/tools/cruceVentasTool';
 import { handleAsistencia } from './mcp/tools/asistenciaTool';
 
@@ -606,6 +608,25 @@ const MCP_TOOLS: McpToolDefinition[] = [
         codigo_confirmacion: { type: 'string', description: 'Código devuelto por la primera llamada. Omitir en la primera llamada.' }
       }
     }
+  },
+  {
+    name: 'historial_base',
+    description: 'Historial de liberaciones de base hechas con aplicar_base (SOLO LECTURA). Por contacto (id_lista, telefono o documento) muestra cada vez que fue liberado: a quién estaba asignado antes (asesor), en qué estado y base (identificador) estaba, su fecha de asignación, a qué base pasó, quién lo liberó y cuándo, además de su situación actual. Sin datos de contacto lista las liberaciones (lotes): fecha, usuario, banco, identificador nuevo, cantidad, cupos creados y filtros; con id_lote da el detalle de ese lote con sus contactos; se puede filtrar por mes/año o fecha_desde y fecha_hasta, y por banco. Úsela para "¿de quién era el contacto 918520?", "¿cuándo se reasignó este teléfono?", "¿qué se liberó la semana pasada y quién lo hizo?". Solo incluye liberaciones hechas con aplicar_base desde que existe el historial (no las hechas a mano).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id_lista: { type: 'number', description: 'id_lista del contacto en notas_registros.' },
+        telefono: { type: 'string', description: 'Teléfono exacto del contacto (10 dígitos con 0 inicial, ej: 0969816358).' },
+        documento: { type: 'string', description: 'Documento (cédula/pasaporte) exacto del contacto.' },
+        id_lote: { type: 'number', description: 'Número de lote (liberación) para ver su detalle.' },
+        mes: { type: 'number', description: 'Mes 1-12 en que se hizo la liberación (con anio, o el año actual).' },
+        anio: { type: 'number', description: 'Año (ej: 2026).' },
+        fecha_desde: { type: 'string', description: 'Inicio del rango de fecha de la liberación (YYYY-MM-DD), inclusive.' },
+        fecha_hasta: { type: 'string', description: 'Fin del rango (YYYY-MM-DD), inclusive.' },
+        banco: { type: 'number', description: 'id_banco de la liberación (ej: 2 Diners).' },
+        limite: { type: 'number', description: 'Máximo de filas (por defecto 50; hasta 300).' }
+      }
+    }
   }
 ];
 
@@ -700,6 +721,11 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'encerar_cupos': {
             const parsed = EncerarCuposInputSchema.parse(toolArgs);
             return rpcResult(await handleEncerarCupos(parsed, String((req as any).userId)));
+          }
+
+          case 'historial_base': {
+            const parsed = HistorialBaseInputSchema.parse(toolArgs);
+            return rpcResult(await handleHistorialBase(parsed));
           }
 
           default:

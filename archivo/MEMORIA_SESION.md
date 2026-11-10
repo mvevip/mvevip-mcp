@@ -1,6 +1,6 @@
 # 🧠 MEMORIA DE SESIÓN: Servidor Remote MCP MVEVIP para Claude
 
-> **HISTÓRICO (7-oct-2026).** Describe la primera versión (clave corporativa, Docker local, herramientas genéricas de BD) que ya no existe.
+> **HISTÓRICO (7-oct-2026), archivado en `archivo/`.** Describe la primera versión (clave corporativa, Docker local, herramientas genéricas de BD) que ya no existe.
 > El estado vigente está en `ESTADO_PROYECTO.md` y la memoria técnica en `MEMORIA.md`.
 
 **Fecha de la Sesión:** 7 de Octubre, 2026  

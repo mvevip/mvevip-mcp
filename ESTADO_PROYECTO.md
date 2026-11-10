@@ -46,8 +46,9 @@ Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 3. ~~`cuadro_ventas`~~ y ~~`requerimientos`~~ funcionan como están; los ajustes (rutas del PHP no incluidas, descuento de requerimientos en el cuadro, uso del campo `estado`) se harán cuando el usuario los notifique.
 4. ~~CI de GitHub~~ en verde.
 5. **Seguridad:** se deja como está hasta resolver otros proyectos (RDS público, permisos de `mcp_ro`, `GRANT` de `punch`).
-6. **Limpieza del repo (SIGUIENTE):** organizar archivos obsoletos sin perder la memoria ni el historial: `build_zip.ps1`, `deploy_aws.ps1`, `docker-compose.yml`/`Dockerfile` (flujo anterior), `MEMORIA_SESION.md` y `referencia/` (históricos o de otro proyecto). Propuesta: moverlos a `archivo/` (o eliminarlos, ya que quedan en el historial de git) y dejar un índice; revisar antes cada referencia en `MEMORIA.md`, `docs/` y `package.json`.
+6. ~~Limpieza del repo~~ hecha el 10-nov: lo histórico quedó en `archivo/` (ver `archivo/README.md`: `MEMORIA_SESION.md`, Docker, scripts PowerShell y `referencia/`); `.dockerignore` eliminado.
 7. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 
 ## SIGUIENTE PASO
-Limpieza opcional del repo: listar qué referencia cada archivo obsoleto (`build_zip.ps1`, `deploy_aws.ps1`, `Dockerfile`, `docker-compose.yml`, `MEMORIA_SESION.md`, `referencia/`), proponer qué archivar o eliminar y esperar la confirmación del usuario antes de mover nada. Después, nuevas herramientas o ajustes solo cuando el usuario los pida.
+No hay pasos pendientes. El proyecto está completo y desplegado (5 herramientas). La limpieza del repo está hecha en la rama `claude/eager-bell-u1yr44` y **no tiene PR** (solo documentación y archivos movidos; no requiere despliegue).
+Cuando el usuario lo pida: crear el PR de esta rama; nuevas herramientas, ajustes de `asistencia`, `cuadro_ventas` o `requerimientos`, usuarios nuevos o revisión de seguridad.

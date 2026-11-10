@@ -49,6 +49,15 @@ Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 6. ~~Limpieza del repo~~ hecha el 10-nov: lo histórico quedó en `archivo/` (ver `archivo/README.md`: `MEMORIA_SESION.md`, Docker, scripts PowerShell y `referencia/`); `.dockerignore` eliminado.
 7. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 
+## EN CURSO: herramienta `buscar_base` (diseño acordado el 10-nov; sin código todavía)
+Libera "base" (contactos de `notas_registros`) sin llamadas, para reasignarla. Reglas del usuario:
+- **Filtros:** rango de `fecha_alta` obligatorio (hora Ecuador, -05). Por defecto `banco=2` (DIN), `LENGTH(telefono)=10` y `estado NOT IN (7,10,27,35)`; el usuario puede cambiar banco (DIN, BGR, PIC…), estados (por nombre), ciudad, `identificador`, `identificadorOriginal`, excluir `BLOQ`.
+- **Asterisk** (MySQL local `192.168.0.40`, tabla `cdr`, `dst` con 0 inicial, texto): rango por defecto = año en curso. Por defecto se liberan los **sin registro o con `SUM(billsec)=0`**; el usuario puede ampliar ("de 0 a 10 segundos incluido sin registro").
+- **Identificador:** el que diga el usuario o `AAAA-MM-DD <SIGLA>-<cantidad liberada>` (predictivo: `AAAA-MM-DD <SIGLA>-PREDICTIVO`).
+- **Aplicar (normal):** `UPDATE notas_registros` (guarda los `...Anterior`, `asignado=0, estado=0, observaciones="", identificador=<nombre>`) + `INSERT INTO notas_registros_cupos` (id_usuario de `usuarios` tipo=6 y estado=0, id de banco, identificador, cupo 0) tal cual los dio el usuario. **Predictivo:** `UPDATE predictivo=0, codigo_predictivo=0 WHERE predictivo=1` + `UPDATE` con `predictivo=1, intentos_predictivo=0, codigo_predictivo=0`; sin `INSERT` de cupos.
+- **Encerar cupos** (`UPDATE notas_registros_cupos SET cupo=0`, sin `WHERE`): solo si el usuario lo pide explícitamente.
+- **Dos fases:** primero vista previa (encontrados, descartados por tener llamadas, a liberar, desgloses, identificador, cupos a crear, predictivos a desmarcar) y un código de confirmación; solo con la confirmación del usuario se ejecuta. Propuesta: 3 herramientas (`buscar_base` solo lectura, `aplicar_base` escritura, `encerar_cupos` escritura).
+- **Conexión a Asterisk (opción A):** servicio HTTPS pequeño y de solo lectura en "Server Docker" (`192.168.0.211`, IP pública `59.153.47.219`, Meraki 1:1 NAT) que consulta `cdr` por la LAN; no se abre el 3306. Falta: scripts de verificación, `GRANT` (usuario de escritura `mcp_base`, usuario de solo lectura para `cdr`), puerto 443 y DNS en Meraki.
+
 ## SIGUIENTE PASO
-No hay pasos pendientes. El proyecto está completo y desplegado (5 herramientas). La limpieza del repo está hecha en la rama `claude/eager-bell-u1yr44` y **no tiene PR** (solo documentación y archivos movidos; no requiere despliegue).
-Cuando el usuario lo pida: crear el PR de esta rama; nuevas herramientas, ajustes de `asistencia`, `cuadro_ventas` o `requerimientos`, usuarios nuevos o revisión de seguridad.
+Paso 1 de `buscar_base`: el usuario ejecuta los scripts de verificación de solo lectura (BD principal y Asterisk), pega los resultados y confirma el puerto 443 y el nombre DNS para el servicio de Asterisk. Después: `GRANT`, servicio de Asterisk, herramientas, pruebas, PR y despliegue (solo después de aplicar los `GRANT`).

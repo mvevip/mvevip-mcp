@@ -1,0 +1,7 @@
+{$GATEWAY_DOMAIN} {
+	encode zstd gzip
+	request_body {
+		max_size 300KB
+	}
+	reverse_proxy gateway:8080
+}

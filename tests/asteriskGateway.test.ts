@@ -13,7 +13,7 @@ test('config: exige token de 32+ caracteres y datos de la base', () => {
   assert.throws(() => leerConfig({ ...ENV, GATEWAY_TOKEN: 'corto' }), /32/);
   assert.throws(() => leerConfig({ ...ENV, DB_PASSWORD: '' }), /DB_PASSWORD/);
   assert.throws(() => leerConfig({ ...ENV, CDR_DB: 'x;drop' }), /CDR_DB/);
-  assert.equal(leerConfig(ENV).cdrDb, 'asteriskcdrdb');
+  assert.equal(leerConfig(ENV).cdrDb, 'asterisk');
 });
 
 test('token: solo "Bearer <token>" exacto', () => {
@@ -39,8 +39,8 @@ test('solicitud: teléfonos con 0 inicial y 10 dígitos, fechas reales, hasta in
 });
 
 test('consulta: valores enlazados, rango semiabierto y base validada', () => {
-  const { sql, params } = construirConsulta('asteriskcdrdb', ['0969816358', '0987502584'], '2026-01-01', '2027-01-01');
-  assert.match(sql, /FROM `asteriskcdrdb`\.`cdr`/);
+  const { sql, params } = construirConsulta('asterisk', ['0969816358', '0987502584'], '2026-01-01', '2027-01-01');
+  assert.match(sql, /FROM `asterisk`\.`cdr`/);
   assert.match(sql, /calldate >= \? AND calldate < \? AND dst IN \(\?,\?\) GROUP BY dst/);
   assert.doesNotMatch(sql, /0969816358/);
   assert.deepEqual(params, ['2026-01-01 00:00:00', '2027-01-01 00:00:00', '0969816358', '0987502584']);
@@ -57,7 +57,7 @@ test('lotes y limitador', () => {
 });
 
 async function conServidor(consultar: (sql: string, params: any[]) => Promise<any[]>, fn: (url: string) => Promise<void>) {
-  const server = crearApp({ config: { token: TOKEN, cdrDb: 'asteriskcdrdb' }, consultar });
+  const server = crearApp({ config: { token: TOKEN, cdrDb: 'asterisk' }, consultar });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
   try {
     await fn(`http://127.0.0.1:${(server.address() as AddressInfo).port}`);

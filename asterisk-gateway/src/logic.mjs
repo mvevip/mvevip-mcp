@@ -16,7 +16,7 @@ export class ErrorHttp extends Error {
 export function leerConfig(env) {
   const token = env.GATEWAY_TOKEN || '';
   if (token.length < 32) throw new Error('GATEWAY_TOKEN debe tener al menos 32 caracteres');
-  const cdrDb = env.CDR_DB || 'asteriskcdrdb';
+  const cdrDb = env.CDR_DB || 'asterisk';
   if (!/^[A-Za-z0-9_]+$/.test(cdrDb)) throw new Error('CDR_DB inválido');
   for (const k of ['DB_HOST', 'DB_USER', 'DB_PASSWORD']) {
     if (!env[k]) throw new Error(`Falta ${k}`);

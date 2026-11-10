@@ -26,6 +26,9 @@ Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 | `requerimientos` | Devoluciones y reclamos de ventas, contados en el mes en que ingresaron; su valor se descuenta de la comisión | `src/mcp/tools/requerimientosTool.ts` |
 | `asistencia` | Entradas del biométrico y atrasos (lunes a viernes, primera entrada del día, sin salidas); vistas por empleado, día o departamento | `src/mcp/tools/asistenciaTool.ts` |
 | `validar_cruce_ventas` | Detecta ventas cruzadas: contacto asignado a otro asesor (`CRUCE_CONTACTO`) y cuotas cuyo cliente es de otro asesor (`CRUCE_CUOTA`) | `src/mcp/tools/cruceVentasTool.ts` |
+| `buscar_base` | Vista previa (solo lectura) de la base a liberar: contactos de `notas_registros` por fecha de alta, sin llamadas en Asterisk; devuelve un código de confirmación | `src/mcp/tools/baseTool.ts` |
+| `aplicar_base` | Libera la base (normal con cupos, o predictivo) en una transacción, solo con el código de la vista previa | `src/mcp/tools/baseTool.ts` |
+| `encerar_cupos` | Pone cupo = 0 en toda `notas_registros_cupos`, en dos pasos y solo a pedido | `src/mcp/tools/baseTool.ts` |
 
 - Código: 82 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
 - Último despliegue: workflow "Deploy to production" **#15** (PR #13, 10-nov). `/health` = 200.

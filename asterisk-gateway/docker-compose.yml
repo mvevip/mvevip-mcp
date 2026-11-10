@@ -7,4 +7,4 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     ports:
-      - "127.0.0.1:8080:8080"   # solo accesible desde el propio servidor; nginx publica el HTTPS
+      - "127.0.0.1:${GATEWAY_PORT:-18080}:8080"   # puerto del servidor (solo local); nginx publica el HTTPS

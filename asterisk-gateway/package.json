@@ -1,0 +1,10 @@
+{
+  "name": "mvevip-asterisk-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Servicio de solo lectura que resume llamadas (cdr) de Asterisk para el MCP de MVEVIP",
+  "engines": { "node": ">=22" },
+  "scripts": { "start": "node src/main.mjs" },
+  "dependencies": { "mysql2": "^3.12.0" }
+}

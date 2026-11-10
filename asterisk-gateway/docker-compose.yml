@@ -1,0 +1,10 @@
+services:
+  gateway:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      - "127.0.0.1:${GATEWAY_PORT:-18080}:8080"   # puerto del servidor (solo local); nginx publica el HTTPS

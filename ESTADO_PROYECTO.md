@@ -49,6 +49,12 @@ Herramientas MCP (solo lectura, sin SQL libre desde el chat):
 6. ~~Limpieza del repo~~ hecha el 10-nov: lo histórico quedó en `archivo/` (ver `archivo/README.md`: `MEMORIA_SESION.md`, Docker, scripts PowerShell y `referencia/`); `.dockerignore` eliminado.
 7. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 
+## EN CURSO: herramientas `buscar_base`, `aplicar_base` y `encerar_cupos` (código listo, SIN desplegar)
+Liberan "base" (contactos de `notas_registros`) sin llamadas para reasignarla. Reglas, seguridad y proceso: `MEMORIA.md` sección 4. Lo hecho el 10-nov:
+- `GRANT` de `mcp_base` (RDS) y de `lectura` (Asterisk, base `asterisk`) aplicados y verificados; clave de `mcp_base` cambiada.
+- Servicio **`asterisk-gateway/`** instalado en Server Docker y probado (cifras iguales al Excel); HTTPS en `https://bases.mvevip.com` (nginx + certbot, vence 8-feb-2027; renovación automática); desde fuera de la oficina responde. Tiene un reinicio del sistema pendiente (kernel).
+- Código: `src/mcp/tools/baseTool.ts`, `src/services/dbWriteService.ts`, `src/services/asteriskClient.ts`, esquemas Zod, definiciones y despacho en `src/index.ts`, parámetros y secrets en `infra/template.yaml` y `deploy.yml`. 109 pruebas (`tests/baseBusqueda.test.ts` reproduce los 12 contactos reales del Excel: se liberan 5 con `DIN-5`), typecheck, empaquetado y `npm audit` en 0.
+- **Falta antes de desplegar:** que el usuario cargue en el environment `production` de GitHub los secrets `ASTERISK_API_URL` (`https://bases.mvevip.com`), `ASTERISK_API_TOKEN` (el `GATEWAY_TOKEN` del `.env` de Server Docker), `DB_WRITE_USER` (`mcp_base`) y `DB_WRITE_PASSWORD` (la clave nueva). Si se despliega sin ellos, las herramientas responden que no están configuradas (no escriben).
+
 ## SIGUIENTE PASO
-No hay pasos pendientes. El proyecto está completo y desplegado (5 herramientas). La limpieza del repo está hecha en la rama `claude/eager-bell-u1yr44` y **no tiene PR** (solo documentación y archivos movidos; no requiere despliegue).
-Cuando el usuario lo pida: crear el PR de esta rama; nuevas herramientas, ajustes de `asistencia`, `cuadro_ventas` o `requerimientos`, usuarios nuevos o revisión de seguridad.
+El usuario carga los 4 secrets; luego "crea el PR y despliega" (PR → merge → "Deploy to production" `ref=main` → `/health`). Después prueba en el chat (quitar y volver a agregar el conector): primero `buscar_base` de un rango pequeño, comparar con su Excel, y solo entonces `aplicar_base`. Opciones posteriores: ajustes a las herramientas, usuarios nuevos del MCP, seguridad (RDS público, permisos de `mcp_ro`).

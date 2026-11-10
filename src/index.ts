@@ -23,11 +23,15 @@ import {
   CuadroVentasInputSchema,
   RequerimientosInputSchema,
   ValidarCruceVentasInputSchema,
+  BuscarBaseInputSchema,
+  AplicarBaseInputSchema,
+  EncerarCuposInputSchema,
   AsistenciaInputSchema
 } from './mcp/types';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
 import { handleCuadro } from './mcp/tools/cuadroTool';
 import { handleRequerimientos } from './mcp/tools/requerimientosTool';
+import { handleBuscarBase, handleAplicarBase, handleEncerarCupos } from './mcp/tools/baseTool';
 import { handleCruceVentas } from './mcp/tools/cruceVentasTool';
 import { handleAsistencia } from './mcp/tools/asistenciaTool';
 
@@ -463,6 +467,26 @@ const authenticateMcp = async (req: Request, res: Response, next: NextFunction) 
 // ---------------------------------------------------------------------------
 // 5. Catálogo de Herramientas MCP (Tools Definitions)
 // ---------------------------------------------------------------------------
+const BASE_PROPS = {
+  mes: { type: 'number', description: 'Mes 1-12 de la fecha de alta de la base. Úselo junto con anio, o use fecha_desde y fecha_hasta. El rango de fechas es OBLIGATORIO: si el usuario no lo dio, pregúntelo.' },
+  anio: { type: 'number', description: 'Año (ej: 2026). Si solo se da mes, se usa el año actual.' },
+  fecha_desde: { type: 'string', description: 'Inicio del rango de fecha de alta (YYYY-MM-DD), inclusive. Reemplaza a mes y anio. "La última semana de octubre" = 2026-10-25 a 2026-10-31: confirme el rango con el usuario si es ambiguo.' },
+  fecha_hasta: { type: 'string', description: 'Fin del rango de fecha de alta (YYYY-MM-DD), inclusive.' },
+  banco: { type: 'number', description: 'id_banco de notas_registros_bancos. Por defecto 2 (Diners, DIN). Otros: 1 Pichincha (PIC), 3 BGR, 7 Pacífico (PAC), etc.' },
+  estados_incluir: { type: 'array', items: { type: ['string', 'number'] }, description: 'Solo estos estados, por nombre o id (ej: ["Interesado", "Llamar más tarde"]). Si se indica, reemplaza la exclusión por defecto. Omitir para usar la exclusión por defecto.' },
+  estados_excluir: { type: 'array', items: { type: ['string', 'number'] }, description: 'Estados a excluir, por nombre o id. Por defecto se excluyen 7 (Venta Realizada), 10 (Bloqueado), 27 (Detener Contacto) y 35 (Pendiente Habilitacion). Si se indica, reemplaza esa lista.' },
+  ciudad: { type: 'string', description: 'Solo esta ciudad (nombre exacto, ej: CUENCA, QUITO, GUAYAQUIL). Omitir para todas.' },
+  filtrar_identificador: { type: 'string', description: 'Solo registros cuyo identificador actual sea exactamente este (ej: "2025-09-11 DIN-570").' },
+  filtrar_identificador_original: { type: 'string', description: 'Solo registros cuyo identificadorOriginal CONTENGA este texto (ej: "pic").' },
+  excluir_bloq: { type: 'boolean', description: 'true para excluir los identificadores que contienen BLOQ.' },
+  asterisk_desde: { type: 'string', description: 'Inicio del rango de llamadas de Asterisk (YYYY-MM-DD). Por defecto el 1 de enero del año en curso.' },
+  asterisk_hasta: { type: 'string', description: 'Fin del rango de llamadas de Asterisk (YYYY-MM-DD). Por defecto hoy.' },
+  billsec_max: { type: 'number', description: 'Tiempo hablado total máximo (segundos) para liberar un teléfono. Por defecto 0. Ej: "de 0 a 10 segundos" => 10.' },
+  incluir_sin_registro: { type: 'boolean', description: 'Liberar también los teléfonos sin ningún registro de llamadas en Asterisk. Por defecto true.' },
+  para_predictivo: { type: 'boolean', description: 'true SOLO si el usuario pidió la base "para predictivo". Entonces el identificador es "AAAA-MM-DD SIGLA-PREDICTIVO", se desmarcan los predictivos actuales y NO se crean cupos.' },
+  nombre_identificador: { type: 'string', description: 'Nombre del identificador nuevo si el usuario lo dio (se respeta tal cual). Si no, se genera: fecha de hoy (Ecuador) + sigla del banco + cantidad liberada (ej: "2026-11-10 DIN-1000").' }
+};
+
 const MCP_TOOLS: McpToolDefinition[] = [
   {
     name: 'reporte_ventas_mes',
@@ -555,6 +579,33 @@ const MCP_TOOLS: McpToolDefinition[] = [
         direccion: { type: 'string', enum: ['asc', 'desc'], description: "Dirección del orden. Por defecto 'desc'." }
       }
     }
+  },
+  {
+    name: 'buscar_base',
+    description: 'PASO 1 para "sacar base" / "liberar base" (SOLO LECTURA, no modifica nada). Busca en notas_registros los contactos que llegaron en un rango de fecha de alta (banco 2 = Diners por defecto, teléfono de 10 dígitos, sin los estados 7, 10, 27 y 35), consulta en la central Asterisk el tiempo hablado de esos teléfonos (año en curso por defecto) y se queda con los que NO tienen registro de llamadas o tienen billsec total = 0 (el usuario puede ampliar con billsec_max, o excluir los sin registro). Devuelve una vista previa: cuántos se encontraron, cuántos se descartan por tener llamadas, cuántos se liberarían, el identificador nuevo (AAAA-MM-DD SIGLA-cantidad, o SIGLA-PREDICTIVO; el usuario puede dar el nombre), los cupos que se crearían (o los predictivos que se desmarcarían), desgloses, una muestra y un codigo_confirmacion. Muestre ese resumen al usuario y NO llame a aplicar_base hasta que confirme explícitamente. Ejemplos: "busca base de la última semana de octubre", "quiero base del mes de septiembre", "base de Cuenca de los interesados de noviembre", "sácame base para predictivo de mayo de 0 a 10 segundos incluido sin registro".',
+    inputSchema: { type: 'object', properties: BASE_PROPS }
+  },
+  {
+    name: 'aplicar_base',
+    description: 'PASO 2: ESCRIBE en la base de datos. Úsela SOLO después de llamar a buscar_base, mostrar la vista previa al usuario y recibir su confirmación explícita. Reciba EXACTAMENTE los mismos parámetros de buscar_base más el codigo_confirmacion que esa vista previa devolvió. Recalcula todo y solo aplica si nada cambió; si cambió, no aplica y devuelve una vista previa nueva para confirmar otra vez. Modo normal: libera los registros (guarda el estado anterior, asignado=0, estado=0, observaciones vacías, identificador nuevo) y crea los cupos en 0 para los usuarios tipo 6 activos (id de banco + identificador). Modo predictivo (para_predictivo=true): desmarca los predictivos actuales, marca estos como predictivo y NO crea cupos. Todo en una transacción. NUNCA la llame por su cuenta ni sin confirmación del usuario.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        ...BASE_PROPS,
+        codigo_confirmacion: { type: 'string', description: 'El codigo_confirmacion devuelto por buscar_base (vale 30 minutos y solo sirve con los mismos parámetros).' }
+      },
+      required: ['codigo_confirmacion']
+    }
+  },
+  {
+    name: 'encerar_cupos',
+    description: 'ESCRIBE en la base de datos: pone cupo = 0 en TODAS las filas de notas_registros_cupos (todos los bancos e identificadores). Úsela SOLO si el usuario lo pide explícitamente ("encérame los cupos"); nunca como parte de buscar_base/aplicar_base. Funciona en dos pasos: sin parámetros devuelve el estado actual y un codigo_confirmacion (no modifica nada); muéstrelo al usuario y, solo con su confirmación explícita, llámela de nuevo con ese codigo_confirmacion.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        codigo_confirmacion: { type: 'string', description: 'Código devuelto por la primera llamada. Omitir en la primera llamada.' }
+      }
+    }
   }
 ];
 
@@ -634,6 +685,21 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'asistencia': {
             const parsed = AsistenciaInputSchema.parse(toolArgs);
             return rpcResult(await handleAsistencia(parsed));
+          }
+
+          case 'buscar_base': {
+            const parsed = BuscarBaseInputSchema.parse(toolArgs);
+            return rpcResult(await handleBuscarBase(parsed, String((req as any).userId)));
+          }
+
+          case 'aplicar_base': {
+            const parsed = AplicarBaseInputSchema.parse(toolArgs);
+            return rpcResult(await handleAplicarBase(parsed, String((req as any).userId)));
+          }
+
+          case 'encerar_cupos': {
+            const parsed = EncerarCuposInputSchema.parse(toolArgs);
+            return rpcResult(await handleEncerarCupos(parsed, String((req as any).userId)));
           }
 
           default:

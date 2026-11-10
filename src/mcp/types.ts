@@ -80,3 +80,27 @@ export const ValidarCruceVentasInputSchema = z.object({
   fecha_hasta: IsoDate.optional(),
   asesor: z.string().max(60).optional(),
 });
+
+const EstadoRef = z.union([z.string().min(1).max(60), z.number().int().min(0).max(1000)]);
+const BaseShape = {
+  mes: z.number().int().min(1).max(12).optional(),
+  anio: z.number().int().min(2000).max(2100).optional(),
+  fecha_desde: IsoDate.optional(),
+  fecha_hasta: IsoDate.optional(),
+  banco: z.number().int().min(1).max(100000).optional(),
+  estados_incluir: z.array(EstadoRef).max(30).optional(),
+  estados_excluir: z.array(EstadoRef).max(30).optional(),
+  ciudad: z.string().max(60).optional(),
+  filtrar_identificador: z.string().max(100).optional(),
+  filtrar_identificador_original: z.string().max(100).optional(),
+  excluir_bloq: z.boolean().optional(),
+  asterisk_desde: IsoDate.optional(),
+  asterisk_hasta: IsoDate.optional(),
+  billsec_max: z.number().int().min(0).max(3600).optional(),
+  incluir_sin_registro: z.boolean().optional(),
+  para_predictivo: z.boolean().optional(),
+  nombre_identificador: z.string().max(100).optional(),
+};
+export const BuscarBaseInputSchema = z.object(BaseShape);
+export const AplicarBaseInputSchema = z.object({ ...BaseShape, codigo_confirmacion: z.string().min(10).max(80) });
+export const EncerarCuposInputSchema = z.object({ codigo_confirmacion: z.string().min(10).max(80).optional() });

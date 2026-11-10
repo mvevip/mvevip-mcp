@@ -24,6 +24,22 @@ Parameters:
     NoEcho: true
   DbName:
     Type: String
+  DbWriteUser:
+    Type: String
+    Default: ''
+    Description: Usuario de escritura (mcp_base, permisos por columna) para aplicar_base y encerar_cupos. Vacío = esas herramientas no escriben.
+  DbWritePassword:
+    Type: String
+    NoEcho: true
+    Default: ''
+  AsteriskApiUrl:
+    Type: String
+    Default: ''
+    Description: URL del servicio asterisk-gateway (ej. https://bases.mvevip.com). Vacío = buscar_base no puede consultar Asterisk.
+  AsteriskApiToken:
+    Type: String
+    NoEcho: true
+    Default: ''
   AuthDbName:
     Type: String
     Default: mvevip_mcp_auth
@@ -142,6 +158,10 @@ Resources:
           DB_PASSWORD: !Ref DbPassword
           DB_NAME: !Ref DbName
           DB_SSL: !Ref DbSsl
+          DB_WRITE_USER: !Ref DbWriteUser
+          DB_WRITE_PASSWORD: !Ref DbWritePassword
+          ASTERISK_API_URL: !Ref AsteriskApiUrl
+          ASTERISK_API_TOKEN: !Ref AsteriskApiToken
           AUTH_DB_NAME: !Ref AuthDbName
           AUTH_DB_USER: !Ref AuthDbUser
           AUTH_DB_PASSWORD: !Ref AuthDbPassword

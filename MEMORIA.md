@@ -100,3 +100,4 @@ Claude / ChatGPT → CloudFront (mcp.mvevip.com, ACM) → Lambda Function URL (B
 - **22-oct-2026:** seguridad, OAuth + PKCE, login con código por correo, BD de autenticación, CI/CD, región us-west-2, rol OIDC (PR #1).
 - **30-oct-2026:** environment `production`, primer despliegue, DNS, SES, usuarios, conectores (Claude y ChatGPT). Herramientas: `reporte_ventas_mes` (PR #2, #3), `cuadro_ventas` (PR #4), corrección de dependencias y de ChatGPT (PR #5), eliminación de herramientas genéricas (PR #6), `requerimientos` (PR #7), `asistencia` (PR #8 y #9). Despliegues #4 a #13.
 - **9-nov-2026:** CI verificado en verde; `validar_cruce_ventas` implementada (rama `claude/wonderful-dirac-8op1t3`), desplegada (PR #11, despliegue #14).
+- **10-nov-2026:** pendientes de herramientas cerrados por el usuario (todo probado); siguiente: limpieza del repo.

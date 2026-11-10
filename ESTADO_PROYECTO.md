@@ -1,4 +1,4 @@
-# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 9-nov-2026)
+# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 10-nov-2026)
 
 Servidor MCP remoto (TypeScript/Express/MySQL) para que Claude y ChatGPT consulten reportes de MVEVIP (ventas, cuadro de ventas,
 requerimientos, asistencia y validación de cruces de ventas). Solo lo usan administradores de la empresa con correo `@mvevip.com`.
@@ -14,7 +14,7 @@ requerimientos, asistencia y validación de cruces de ventas). Solo lo usan admi
 - Avanzar **de a un paso**, esperando la confirmación del usuario.
 - **Solo crear PR cuando el usuario lo pide.** Cuando dice "crea el PR y despliega": crear PR → fusionar (`merge`) → ejecutar el workflow "Deploy to production" con `ref=main` → verificar → actualizar este archivo.
 - Los secretos y contraseñas **no** se guardan en el repo. Las contraseñas generadas de usuarios se entregan una sola vez en el chat y el usuario las guarda en su gestor.
-- Rama de trabajo de la sesión actual: `claude/wonderful-dirac-8op1t3` (la anterior fue `claude/festive-thompson-nd74zw`, ya fusionada) (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
+- Rama de trabajo de la sesión actual: `claude/eager-bell-u1yr44` (las anteriores, `claude/wonderful-dirac-8op1t3` y `claude/festive-thompson-nd74zw`, ya fusionadas) (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
 
 ## Estado actual (todo desplegado en producción)
 Herramientas MCP (solo lectura, sin SQL libre desde el chat):
@@ -40,18 +40,14 @@ Herramientas MCP (solo lectura, sin SQL libre desde el chat):
    Claude escribe la herramienta con pruebas (incluida una que reproduce cifras reales de la pantalla del usuario) → PR → merge → deploy → el usuario prueba en el chat y compara cifras.
 4. Se eliminaron las herramientas genéricas (`test_db_connection`, `describe_database`, `get_table_schema`, `query_database_sample`) para que no haya SQL libre.
 
-## PENDIENTES (por prioridad)
-1. **`asistencia` — definiciones del negocio:**
-   a. *Horas trabajadas*: el usuario las quiere, pero también dijo que las salidas nunca se consideran; falta aclarar el cálculo (¿primera entrada a última marcación del día, u otro?).
-   b. *Feriados*: hoy solo se excluyen sábados y domingos; decidir si se excluyen feriados (tabla `cuadro_feriados` de `vtgsa_ventas`, ya usada por el cuadro).
-   c. *Ausentes* (quién no marcó): etapa 2; requiere lista de empleados activos y días laborables.
-2. **Cuadro de ventas:** el usuario revisará los valores y enviará ajustes si hace falta. Hoy el cuadro **no** descuenta los requerimientos de la comisión (decidido: así está bien por ahora). Rutas del PHP no incluidas: islas, ranking, dados, parejas, `cuadro-octubre`, pantalla (recursos/mensajes/música).
-3. **`requerimientos`:** el campo `estado` no se usa por ahora (decisión del usuario).
-4. ~~CI de GitHub~~ verificado el 9-nov: en verde (ejecuciones #15 a #20).
-5. **Seguridad (más adelante):** RDS público (acordado, otro proyecto); `mcp_ro` conserva `SELECT` sobre toda `vtgsa_ventas` aunque ya no haya SQL libre (se podría reducir a las tablas usadas); el `GRANT` de `punch` en `mve_asistencias` ya no se usa y podría revocarse; restringir herramientas por usuario si algún día se necesita.
-6. **Limpieza del repo (opcional):** `build_zip.ps1`, `deploy_aws.ps1`, `docker-compose.yml`/`Dockerfile` (flujo anterior), `MEMORIA_SESION.md` y `referencia/` son históricos o de otro proyecto.
-7. **Operación:** crear usuarios nuevos cuando se necesiten (comando en `docs/DEPLOY.md`, solo `@mvevip.com`); para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
+## PENDIENTES (cerrados por el usuario el 10-nov; se reabren solo si el usuario lo pide)
+1. ~~`validar_cruce_ventas`~~ probada por el usuario en el chat: correcta.
+2. ~~`asistencia`~~ funciona como está. Horas trabajadas, feriados y ausentes quedan para cuando el usuario lo pida.
+3. ~~`cuadro_ventas`~~ y ~~`requerimientos`~~ funcionan como están; los ajustes (rutas del PHP no incluidas, descuento de requerimientos en el cuadro, uso del campo `estado`) se harán cuando el usuario los notifique.
+4. ~~CI de GitHub~~ en verde.
+5. **Seguridad:** se deja como está hasta resolver otros proyectos (RDS público, permisos de `mcp_ro`, `GRANT` de `punch`).
+6. **Limpieza del repo (SIGUIENTE):** organizar archivos obsoletos sin perder la memoria ni el historial: `build_zip.ps1`, `deploy_aws.ps1`, `docker-compose.yml`/`Dockerfile` (flujo anterior), `MEMORIA_SESION.md` y `referencia/` (históricos o de otro proyecto). Propuesta: moverlos a `archivo/` (o eliminarlos, ya que quedan en el historial de git) y dejar un índice; revisar antes cada referencia en `MEMORIA.md`, `docs/` y `package.json`.
+7. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 
 ## SIGUIENTE PASO
-`validar_cruce_ventas` quedó desplegada (PR #11, despliegue #14, `/health` = 200). Falta que el usuario la pruebe en el chat (quitar y volver a agregar el conector para refrescar la lista) y compare con octubre: 448 ventas; con solo `id_lista` hubo 5 cruces de contacto, 13 de cuota y 111 sin nota (el respaldo por documento debería reducir los sin nota). Si el respaldo por documento es lento, proponer un índice sobre `notas_registros.documento` (lo crea el usuario).
-Después, las opciones: **(a)** definir horas trabajadas, feriados y ausentes de `asistencia`; **(b)** otra herramienta nueva; **(c)** limpiar archivos obsoletos; **(d)** crear más usuarios del MCP.
+Limpieza opcional del repo: listar qué referencia cada archivo obsoleto (`build_zip.ps1`, `deploy_aws.ps1`, `Dockerfile`, `docker-compose.yml`, `MEMORIA_SESION.md`, `referencia/`), proponer qué archivar o eliminar y esperar la confirmación del usuario antes de mover nada. Después, nuevas herramientas o ajustes solo cuando el usuario los pida.

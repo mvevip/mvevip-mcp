@@ -6,22 +6,5 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
-    expose: ["8080"]            # solo lo ve Caddy; no se publica en el host
-
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    depends_on: [gateway]
-    environment:
-      GATEWAY_DOMAIN: ${GATEWAY_DOMAIN}
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-
-volumes:
-  caddy_data:
-  caddy_config:
+      - "127.0.0.1:8080:8080"   # solo accesible desde el propio servidor; nginx publica el HTTPS

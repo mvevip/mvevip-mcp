@@ -14,6 +14,10 @@ test('config: exige token de 32+ caracteres y datos de la base', () => {
   assert.throws(() => leerConfig({ ...ENV, DB_PASSWORD: '' }), /DB_PASSWORD/);
   assert.throws(() => leerConfig({ ...ENV, CDR_DB: 'x;drop' }), /CDR_DB/);
   assert.equal(leerConfig(ENV).cdrDb, 'asterisk');
+  // archivos .env creados en Windows traen \r al final de cada valor
+  const c = leerConfig({ ...ENV, GATEWAY_TOKEN: `${TOKEN}\r`, DB_PASSWORD: 'p\r' });
+  assert.equal(c.token, TOKEN);
+  assert.equal(c.db.password, 'p');
 });
 
 test('token: solo "Bearer <token>" exacto', () => {

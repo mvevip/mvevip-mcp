@@ -13,7 +13,9 @@ export class ErrorHttp extends Error {
   }
 }
 
-export function leerConfig(env) {
+export function leerConfig(entorno) {
+  // Se quitan espacios y saltos de línea (\r de archivos creados en Windows) de cada valor.
+  const env = Object.fromEntries(Object.entries(entorno).map(([k, v]) => [k, typeof v === 'string' ? v.trim() : v]));
   const token = env.GATEWAY_TOKEN || '';
   if (token.length < 32) throw new Error('GATEWAY_TOKEN debe tener al menos 32 caracteres');
   const cdrDb = env.CDR_DB || 'asterisk';

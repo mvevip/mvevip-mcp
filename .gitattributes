@@ -1,0 +1,2 @@
+# Los archivos del servicio se copian a un servidor Linux: siempre con saltos de línea LF
+asterisk-gateway/** text eol=lf

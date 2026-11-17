@@ -104,3 +104,9 @@ const BaseShape = {
 export const BuscarBaseInputSchema = z.object(BaseShape);
 export const AplicarBaseInputSchema = z.object({ ...BaseShape, codigo_confirmacion: z.string().min(10).max(80) });
 export const EncerarCuposInputSchema = z.object({ codigo_confirmacion: z.string().min(10).max(80).optional() });
+
+export const EncontrarContactoInputSchema = z.object({
+  texto: z.string().min(1).max(80),
+  campo: z.enum(['todos', 'documento', 'nombres', 'telefono', 'correo', 'asesor']).optional(),
+  limite: z.number().int().min(1).max(200).optional(),
+});

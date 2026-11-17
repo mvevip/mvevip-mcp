@@ -16,7 +16,7 @@ requerimientos, asistencia, validación de cruces de ventas y liberación de bas
 - Los secretos y contraseñas **no** se guardan en el repo. Las contraseñas generadas de usuarios se entregan una sola vez en el chat y el usuario las guarda en su gestor.
 - Rama de trabajo de la sesión actual: `claude/intelligent-ritchie-gngbib`. Las ramas anteriores (todas fusionadas) se borraron el 17-nov (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
 
-## Estado actual (todo desplegado en producción)
+## Estado actual (todo desplegado en producción, 9 herramientas)
 Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos pasos con código de confirmación):
 
 | Herramienta | Qué da | Archivo |
@@ -26,13 +26,13 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 | `requerimientos` | Devoluciones y reclamos de ventas, contados en el mes en que ingresaron; su valor se descuenta de la comisión | `src/mcp/tools/requerimientosTool.ts` |
 | `asistencia` | Entradas del biométrico y atrasos (lunes a viernes, primera entrada del día, sin salidas); vistas por empleado, día o departamento | `src/mcp/tools/asistenciaTool.ts` |
 | `validar_cruce_ventas` | Detecta ventas cruzadas: contacto asignado a otro asesor (`CRUCE_CONTACTO`) y cuotas cuyo cliente es de otro asesor (`CRUCE_CUOTA`) | `src/mcp/tools/cruceVentasTool.ts` |
-| `encontrar_contacto` | Busca contactos de `notas_registros` por documento, nombres, teléfono, correo o asesor (uno o varios registros; **código listo, sin desplegar**) | `src/mcp/tools/contactoTool.ts` |
+| `encontrar_contacto` | Busca contactos de `notas_registros` por documento, nombres, teléfono, correo o asesor (uno o varios registros) | `src/mcp/tools/contactoTool.ts` |
 | `buscar_base` | Solo lectura: contactos de `notas_registros` sin llamadas (cruce con Asterisk) y vista previa con código de confirmación | `src/mcp/tools/baseTool.ts` |
 | `aplicar_base` | Libera la base de `buscar_base` (normal o predictivo) en una transacción, solo si el código coincide | `src/mcp/tools/baseTool.ts` |
 | `encerar_cupos` | Pone en 0 los cupos de `notas_registros_cupos` (dos pasos, solo a pedido) | `src/mcp/tools/baseTool.ts` |
 
 - Código: 117 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
-- Último despliegue: workflow "Deploy to production" **#15** (PR #13, 10-nov, `main` = `6938037`). `/health` = 200 (verificado 17-nov). CI en verde.
+- Último despliegue: workflow "Deploy to production" **#16** (PR #14, 17-nov, `main` = `e87d154`). `/health` = 200. CI en verde.
 - Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
 - SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
 - Conector de ChatGPT funcionando (se corrigió el metadato `/.well-known/oauth-protected-resource/mcp` y se permitieron sus URL de retorno `https://chatgpt.com/connector/oauth/<id>`).
@@ -52,8 +52,5 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 5. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 6. Mantenimiento de ramas hecho el 17-nov: se borraron las ramas remotas ya fusionadas; quedan `main` y la rama de trabajo.
 
-## EN CURSO: herramienta `encontrar_contacto` (código listo, SIN desplegar)
-Reglas y diseño en `MEMORIA.md` sección 4. No necesita `GRANT` (verificado 17-nov: `mcp_ro` tiene `SELECT` sobre `vtgsa_ventas.*`). 117 pruebas, typecheck, paquete y audit en 0 (la prueba con cifras reales usa el teléfono 0958978745, que está en dos bases).
-
 ## SIGUIENTE PASO
-Si el usuario revisa el diseño y dice "crea el PR y despliega" (PR → merge → "Deploy to production" `ref=main` → `/health`), después prueba en el chat (quitar y volver a agregar el conector) con un teléfono y un documento reales. Luego queda pendiente decidir qué hacer con `historial_base` (rama `claude/eager-bell-u1yr44`, sin fusionar). Fuera de eso: esperar indicaciones del usuario (nueva herramienta con el flujo de `MEMORIA.md` sección 5, ajustes a las existentes, usuarios nuevos del MCP o, en otro proyecto, la seguridad).
+`encontrar_contacto` está desplegada (despliegue #16, 17-nov; 9 herramientas). El usuario la prueba en el chat (quitar y volver a agregar el conector) con un teléfono y un documento reales; si algo no cuadra se ajusta. Pendiente de decisión del usuario: qué hacer con `historial_base` (rama `claude/eager-bell-u1yr44`, sin fusionar: historial de liberaciones; faltan verificar sus `GRANT` y dar `SELECT` a `mcp_ro` en las tablas nuevas) y borrar las ramas remotas ya fusionadas desde GitHub (Settings → Branches), salvo `eager-bell-u1yr44`. Fuera de eso: esperar indicaciones.

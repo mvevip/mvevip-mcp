@@ -81,7 +81,7 @@ Claude / ChatGPT → CloudFront (mcp.mvevip.com, ACM) → Lambda Function URL (B
 - Parámetros: `mes`/`anio` o `fecha_desde`/`fecha_hasta`, `departamento`, `empleado` y `dispositivo` (búsqueda parcial con valores enlazados), `agrupar_por` (ninguno, empleado, dia, departamento), `todas_las_marcaciones`, `ordenar_por`, `direccion`. Siempre devuelve totales; si un filtro no encuentra nada, devuelve los departamentos y dispositivos válidos.
 - No incluye: horas trabajadas, feriados, ausentes (pendientes, ver `ESTADO_PROYECTO.md`).
 
-### `encontrar_contacto` (`contactoTool.ts`) — buscar contactos de `notas_registros` (implementada 17-nov, sin desplegar)
+### `encontrar_contacto` (`contactoTool.ts`) — buscar contactos de `notas_registros` (implementada y desplegada el 17-nov, PR #14, despliegue #16)
 - Consulta del usuario: `notas_registros` + `usuarios` (asesor = `U.nombres`) + `notas_registros_bancos` + `notas_registros_estados`, ordenada por `id_lista DESC`. Solo lectura con `mcp_ro` (sin `GRANT` nuevo); solo se lee `U.nombres` de `usuarios` (la tabla tiene `password` y `hash`; no se seleccionan).
 - Parámetros: `texto` (3 a 80 caracteres, "contiene"), `campo` (`todos` por defecto = los cinco con OR como la consulta original, o `documento`, `nombres`, `telefono`, `correo`, `asesor`; el usuario suele buscar por uno solo) y `limite` (50 por defecto, máx. 200; avisa si hay más). En `nombres` y `asesor` cada palabra debe aparecer, en cualquier orden. Valores enlazados y `%`/`_` escapados. Devuelve además `id_lista` (sirve para `historial_base`) y las fechas como texto.
 - Tabla de 838 133 filas; solo `telefono` tiene índice y el `LIKE '%…%'` no lo usa (recorre la tabla): por eso el mínimo de caracteres, el tope y preferir `campo`. Caso real: el teléfono 0958978745 está en dos registros (LEADS y MIS CONTACTOS).
@@ -119,4 +119,4 @@ Claude / ChatGPT → CloudFront (mcp.mvevip.com, ACM) → Lambda Function URL (B
 - **10-nov-2026:** pendientes de herramientas cerrados por el usuario (todo probado); limpieza del repo: material histórico movido a `archivo/` (PR #12). Nueva función: `buscar_base` / `aplicar_base` / `encerar_cupos`, `mcp_base`, servicio `asterisk-gateway` (rama `claude/eager-bell-u1yr44`).
 - **10-nov-2026 (tarde):** PR #13 fusionado y desplegado (despliegue #15): `buscar_base`, `aplicar_base`, `encerar_cupos` y `asterisk-gateway`.
 - **17-nov-2026:** revisión general; el usuario confirma que todas las herramientas funcionan y las da por cerradas; reinicio de Server Docker hecho; seguridad aplazada (otro proyecto); borradas las ramas remotas fusionadas; documentación al día.
-- **17-nov-2026 (tarde):** `encontrar_contacto` implementada (sin desplegar).
+- **17-nov-2026 (tarde):** `encontrar_contacto` implementada y desplegada (PR #14, despliegue #16).

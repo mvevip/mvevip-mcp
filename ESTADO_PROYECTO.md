@@ -26,11 +26,12 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 | `requerimientos` | Devoluciones y reclamos de ventas, contados en el mes en que ingresaron; su valor se descuenta de la comisión | `src/mcp/tools/requerimientosTool.ts` |
 | `asistencia` | Entradas del biométrico y atrasos (lunes a viernes, primera entrada del día, sin salidas); vistas por empleado, día o departamento | `src/mcp/tools/asistenciaTool.ts` |
 | `validar_cruce_ventas` | Detecta ventas cruzadas: contacto asignado a otro asesor (`CRUCE_CONTACTO`) y cuotas cuyo cliente es de otro asesor (`CRUCE_CUOTA`) | `src/mcp/tools/cruceVentasTool.ts` |
+| `encontrar_contacto` | Busca contactos de `notas_registros` por documento, nombres, teléfono, correo o asesor (uno o varios registros; **código listo, sin desplegar**) | `src/mcp/tools/contactoTool.ts` |
 | `buscar_base` | Solo lectura: contactos de `notas_registros` sin llamadas (cruce con Asterisk) y vista previa con código de confirmación | `src/mcp/tools/baseTool.ts` |
 | `aplicar_base` | Libera la base de `buscar_base` (normal o predictivo) en una transacción, solo si el código coincide | `src/mcp/tools/baseTool.ts` |
 | `encerar_cupos` | Pone en 0 los cupos de `notas_registros_cupos` (dos pasos, solo a pedido) | `src/mcp/tools/baseTool.ts` |
 
-- Código: 109 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
+- Código: 117 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
 - Último despliegue: workflow "Deploy to production" **#15** (PR #13, 10-nov, `main` = `6938037`). `/health` = 200 (verificado 17-nov). CI en verde.
 - Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
 - SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
@@ -51,5 +52,8 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 5. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 6. Mantenimiento de ramas hecho el 17-nov: se borraron las ramas remotas ya fusionadas; quedan `main` y la rama de trabajo.
 
+## EN CURSO: herramienta `encontrar_contacto` (código listo, SIN desplegar)
+Reglas y diseño en `MEMORIA.md` sección 4. No necesita `GRANT` (verificado 17-nov: `mcp_ro` tiene `SELECT` sobre `vtgsa_ventas.*`). 117 pruebas, typecheck, paquete y audit en 0 (la prueba con cifras reales usa el teléfono 0958978745, que está en dos bases).
+
 ## SIGUIENTE PASO
-Ninguno pendiente: el proyecto está al día y en producción. Esperar indicaciones del usuario (nueva herramienta con el flujo de `MEMORIA.md` sección 5, ajustes a las existentes, usuarios nuevos del MCP o, en otro proyecto, la seguridad).
+Si el usuario revisa el diseño y dice "crea el PR y despliega" (PR → merge → "Deploy to production" `ref=main` → `/health`), después prueba en el chat (quitar y volver a agregar el conector) con un teléfono y un documento reales. Luego queda pendiente decidir qué hacer con `historial_base` (rama `claude/eager-bell-u1yr44`, sin fusionar). Fuera de eso: esperar indicaciones del usuario (nueva herramienta con el flujo de `MEMORIA.md` sección 5, ajustes a las existentes, usuarios nuevos del MCP o, en otro proyecto, la seguridad).

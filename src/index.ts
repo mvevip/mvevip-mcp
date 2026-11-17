@@ -22,6 +22,7 @@ import {
   SalesReportInputSchema,
   CuadroVentasInputSchema,
   RequerimientosInputSchema,
+  EncontrarContactoInputSchema,
   ValidarCruceVentasInputSchema,
   BuscarBaseInputSchema,
   AplicarBaseInputSchema,
@@ -34,6 +35,7 @@ import { handleRequerimientos } from './mcp/tools/requerimientosTool';
 import { handleBuscarBase, handleAplicarBase, handleEncerarCupos } from './mcp/tools/baseTool';
 import { handleCruceVentas } from './mcp/tools/cruceVentasTool';
 import { handleAsistencia } from './mcp/tools/asistenciaTool';
+import { handleEncontrarContacto } from './mcp/tools/contactoTool';
 
 dotenv.config();
 
@@ -581,6 +583,19 @@ const MCP_TOOLS: McpToolDefinition[] = [
     }
   },
   {
+    name: 'encontrar_contacto',
+    description: 'SOLO LECTURA. Busca contactos (notas_registros) por documento, nombres, teléfono, correo o nombre del asesor asignado y devuelve TODOS los registros que coincidan (puede ser uno o varios; el mismo teléfono puede estar en varias bases): id_lista, banco, identificador, identificadorOriginal, documento, nombres, teléfono, correo, asesor, fecha de alta, fecha del último contacto, fecha de asignación y estado, del más reciente al más antiguo. La búsqueda es "contiene" (mínimo 3 caracteres). Use "campo" para buscar solo en uno (documento, nombres, telefono, correo o asesor); si no se indica busca en los cinco. En nombres y asesor basta con que aparezcan todas las palabras, en cualquier orden. Por defecto devuelve hasta 50 contactos (limite hasta 200) e indica si hay más. Ejemplos: "busca el contacto con teléfono 0958978745", "quién es el documento 1719708677", "contactos del asesor Samantha", "busca el correo calolomino@gmail.com".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        texto: { type: 'string', description: 'Texto a buscar (mínimo 3 caracteres): parte del documento, nombre, teléfono, correo o asesor.' },
+        campo: { type: 'string', enum: ['todos', 'documento', 'nombres', 'telefono', 'correo', 'asesor'], description: "Dónde buscar. Por defecto 'todos' (los cinco campos). Es más rápido y preciso indicar el campo." },
+        limite: { type: 'integer', minimum: 1, maximum: 200, description: 'Máximo de contactos a devolver (por defecto 50, máximo 200).' }
+      },
+      required: ['texto']
+    }
+  },
+  {
     name: 'buscar_base',
     description: 'PASO 1 para "sacar base" / "liberar base" (SOLO LECTURA, no modifica nada). Busca en notas_registros los contactos que llegaron en un rango de fecha de alta (banco 2 = Diners por defecto, teléfono de 10 dígitos, sin los estados 7, 10, 27 y 35), consulta en la central Asterisk el tiempo hablado de esos teléfonos (año en curso por defecto) y se queda con los que NO tienen registro de llamadas o tienen billsec total = 0 (el usuario puede ampliar con billsec_max, o excluir los sin registro). Devuelve una vista previa: cuántos se encontraron, cuántos se descartan por tener llamadas, cuántos se liberarían, el identificador nuevo (AAAA-MM-DD SIGLA-cantidad, o SIGLA-PREDICTIVO; el usuario puede dar el nombre), los cupos que se crearían (o los predictivos que se desmarcarían), desgloses, una muestra y un codigo_confirmacion. Muestre ese resumen al usuario y NO llame a aplicar_base hasta que confirme explícitamente. Ejemplos: "busca base de la última semana de octubre", "quiero base del mes de septiembre", "base de Cuenca de los interesados de noviembre", "sácame base para predictivo de mayo de 0 a 10 segundos incluido sin registro".',
     inputSchema: { type: 'object', properties: BASE_PROPS }
@@ -685,6 +700,11 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'asistencia': {
             const parsed = AsistenciaInputSchema.parse(toolArgs);
             return rpcResult(await handleAsistencia(parsed));
+          }
+
+          case 'encontrar_contacto': {
+            const parsed = EncontrarContactoInputSchema.parse(toolArgs);
+            return rpcResult(await handleEncontrarContacto(parsed));
           }
 
           case 'buscar_base': {

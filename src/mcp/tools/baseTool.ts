@@ -325,7 +325,7 @@ interface Plan {
   firma: unknown;
 }
 
-const numero = (v: unknown) => Number((v as any) ?? 0) || 0;
+export const numero = (v: unknown) => Number((v as any) ?? 0) || 0;
 
 const calcularPlan = async (p: BaseParams, userId: string, deps: BaseDeps): Promise<Plan> => {
   const ahora = deps.ahora();
@@ -483,10 +483,10 @@ const resumenPlan = (plan: Plan) => {
   };
 };
 
-const texto = (titulo: string, payload: unknown): ToolResult => ({
+export const texto = (titulo: string, payload: unknown): ToolResult => ({
   content: [{ type: 'text', text: `${titulo}\n\n\`\`\`json\n${JSON.stringify(payload)}\n\`\`\`` }]
 });
-const falla = (mensaje: string): ToolResult => ({ content: [{ type: 'text', text: `❌ ${mensaje}` }], isError: true });
+export const falla = (mensaje: string): ToolResult => ({ content: [{ type: 'text', text: `❌ ${mensaje}` }], isError: true });
 
 // ---------------------------------------------------------------------------
 // buscar_base (solo lectura: vista previa)

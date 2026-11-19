@@ -52,5 +52,11 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 5. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 6. Mantenimiento de ramas hecho el 17-nov: se borraron las ramas remotas ya fusionadas; quedan `main` y la rama de trabajo.
 
+## EN CURSO: `asignar_base_usuario` y `encerar_cupo_usuario` (diseño acordado 19-nov; sin código)
+- `asignar_base_usuario`: asigna cupo de una base (banco + identificador) a uno o varios usuarios. Identificador obligatorio (si falta, lo pide y no asume). Modo `sumar` por defecto (el sistema entrega lo que falta del cupo) y `fijar` opcional. Solo usuarios tipo 6 activos (`estado=0`); nombre ambiguo = pide elegir. Dos pasos con código de confirmación; advierte (no bloquea) si el cupo pedido supera los contactos libres. Auditoría `[AUDIT]`.
+- `encerar_cupo_usuario`: pone cupo 0 solo a los usuarios indicados (todos sus identificadores o uno si se da). Dos pasos. `encerar_cupos` (todos) sigue igual.
+- Historial de estas operaciones: se deja para después (junto con `historial_base`).
+- Falta: el usuario ejecuta las verificaciones de la estructura de `notas_registros_cupos` y luego `GRANT SELECT (id_usuario) ON vtgsa_ventas.notas_registros_cupos TO 'mcp_base'@'%'`.
+
 ## SIGUIENTE PASO
-`encontrar_contacto` está desplegada (despliegue #16, 17-nov; 9 herramientas). El usuario la prueba en el chat (quitar y volver a agregar el conector) con un teléfono y un documento reales; si algo no cuadra se ajusta. Pendiente de decisión del usuario: qué hacer con `historial_base` (rama `claude/eager-bell-u1yr44`, sin fusionar: historial de liberaciones; faltan verificar sus `GRANT` y dar `SELECT` a `mcp_ro` en las tablas nuevas) y borrar las ramas remotas ya fusionadas desde GitHub (Settings → Branches), salvo `eager-bell-u1yr44`. Fuera de eso: esperar indicaciones.
+El usuario pega los resultados de las verificaciones de `notas_registros_cupos`; confirmar el diseño con la estructura real, aplicar el `GRANT`, escribir las dos herramientas con pruebas y desplegar ("crea el PR y despliega"). Pendientes aparte: decidir qué hacer con `historial_base` (rama `claude/eager-bell-u1yr44`, sin fusionar) y borrar las ramas remotas ya fusionadas desde GitHub (Settings → Branches), salvo `eager-bell-u1yr44`.

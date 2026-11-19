@@ -14,7 +14,7 @@ requerimientos, asistencia, validación de cruces de ventas y liberación de bas
 - Avanzar **de a un paso**, esperando la confirmación del usuario.
 - **Solo crear PR cuando el usuario lo pide.** Cuando dice "crea el PR y despliega": crear PR → fusionar (`merge`) → ejecutar el workflow "Deploy to production" con `ref=main` → verificar → actualizar este archivo.
 - Los secretos y contraseñas **no** se guardan en el repo. Las contraseñas generadas de usuarios se entregan una sola vez en el chat y el usuario las guarda en su gestor.
-- Rama de trabajo de la sesión actual: `claude/intelligent-ritchie-gngbib`. Las ramas anteriores (todas fusionadas) se borraron el 17-nov (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
+- Rama de trabajo de la sesión actual: `claude/intelligent-ritchie-gngbib`. Las ramas anteriores (todas fusionadas) se borraron el 19-nov (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
 
 ## Estado actual (todo desplegado en producción, 12 herramientas)
 Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos pasos con código de confirmación):
@@ -53,10 +53,10 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 3. **Seguridad: aplazada**, se resuelve en otro proyecto (RDS público, permisos de `mcp_ro`, `GRANT` de `punch`).
 4. **Funciones futuras: ninguna por ahora.** Ideas guardadas para cuando el usuario las pida: `asistencia` (horas trabajadas, feriados, ausentes) y `cuadro_ventas` (rutas del PHP no incluidas, descuento de requerimientos, uso del campo `estado`).
 5. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
-6. Mantenimiento de ramas hecho el 17-nov: se borraron las ramas remotas ya fusionadas; quedan `main` y la rama de trabajo.
+6. Mantenimiento de ramas hecho el 19-nov (borradas por el usuario desde GitHub y verificado): en el remoto solo quedan `main` y la rama de trabajo.
 
 ## HISTORIAL DE LIBERACIONES: `historial_base` (desplegado el 19-nov: PR #16, despliegue #18)
 `aplicar_base` registra cada liberación (lote en `mcp_base_lotes` y estado anterior de cada contacto en `mcp_base_historial`, en la misma transacción) y `historial_base` la consulta por contacto o por lote. Reglas en `MEMORIA.md` sección 4; DDL en `db/historial_base.sql`. No registra `asignar_base_usuario`, `encerar_cupo_usuario`, liberaciones anteriores ni las hechas a mano.
 
 ## SIGUIENTE PASO
-El usuario prueba en el chat (quitar y volver a agregar el conector): una liberación pequeña con `aplicar_base` y luego `historial_base` por uno de esos contactos o por el `id_lote`; si algo no cuadra se ajusta. Pendiente aparte: borrar las ramas remotas ya fusionadas desde GitHub (Settings → Branches), incluida `claude/eager-bell-u1yr44` (ya fusionado su contenido en el PR #16). Fuera de eso: esperar indicaciones.
+El usuario prueba en el chat (quitar y volver a agregar el conector): una liberación pequeña con `aplicar_base` y luego `historial_base` por uno de esos contactos o por el `id_lote`; si algo no cuadra se ajusta. Fuera de eso: esperar indicaciones.

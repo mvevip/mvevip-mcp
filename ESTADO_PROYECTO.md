@@ -16,7 +16,7 @@ requerimientos, asistencia, validación de cruces de ventas y liberación de bas
 - Los secretos y contraseñas **no** se guardan en el repo. Las contraseñas generadas de usuarios se entregan una sola vez en el chat y el usuario las guarda en su gestor.
 - Rama de trabajo de la sesión actual: `claude/intelligent-ritchie-gngbib`. Las ramas anteriores (todas fusionadas) se borraron el 17-nov (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
 
-## Estado actual (todo desplegado en producción, 11 herramientas)
+## Estado actual (todo desplegado en producción, 12 herramientas)
 Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos pasos con código de confirmación):
 
 | Herramienta | Qué da | Archivo |
@@ -29,13 +29,13 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 | `encontrar_contacto` | Busca contactos de `notas_registros` por documento, nombres, teléfono, correo o asesor (uno o varios registros) | `src/mcp/tools/contactoTool.ts` |
 | `asignar_base_usuario` | Asigna cupo de una base (banco + identificador) a uno o varios asesores tipo 6 activos; modo `sumar` (defecto) o `fijar`; identificador obligatorio; dos pasos | `src/mcp/tools/cuposTool.ts` |
 | `encerar_cupo_usuario` | Pone cupo 0 solo a los asesores indicados (todas sus bases o una); dos pasos | `src/mcp/tools/cuposTool.ts` |
-| `historial_base` | Solo lectura: historial de liberaciones de `aplicar_base` por contacto (id_lista, teléfono o documento) o por lote/fecha/banco (**código listo, sin desplegar**) | `src/mcp/tools/historialBaseTool.ts` |
+| `historial_base` | Solo lectura: historial de liberaciones de `aplicar_base` por contacto (id_lista, teléfono o documento) o por lote/fecha/banco | `src/mcp/tools/historialBaseTool.ts` |
 | `buscar_base` | Solo lectura: contactos de `notas_registros` sin llamadas (cruce con Asterisk) y vista previa con código de confirmación | `src/mcp/tools/baseTool.ts` |
 | `aplicar_base` | Libera la base de `buscar_base` (normal o predictivo) en una transacción, solo si el código coincide | `src/mcp/tools/baseTool.ts` |
 | `encerar_cupos` | Pone en 0 los cupos de `notas_registros_cupos` (dos pasos, solo a pedido) | `src/mcp/tools/baseTool.ts` |
 
 - Código: 144 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
-- Último despliegue: workflow "Deploy to production" **#17** (PR #15, 19-nov, `main` = `6621bbf`). `/health` = 200. CI en verde.
+- Último despliegue: workflow "Deploy to production" **#18** (PR #16, 19-nov, `main` = `3557e04`). `/health` = 200. CI en verde.
 - Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
 - SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
 - Conector de ChatGPT funcionando (se corrigió el metadato `/.well-known/oauth-protected-resource/mcp` y se permitieron sus URL de retorno `https://chatgpt.com/connector/oauth/<id>`).
@@ -55,8 +55,8 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 5. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 6. Mantenimiento de ramas hecho el 17-nov: se borraron las ramas remotas ya fusionadas; quedan `main` y la rama de trabajo.
 
-## EN CURSO: `historial_base` y registro de liberaciones (código listo en el PR, SIN desplegar)
-Traído a `main` desde la rama `claude/eager-bell-u1yr44` (commit `237da06`, 10-nov) y adaptado a lo nuevo (conflictos resueltos 19-nov). `aplicar_base` ahora guarda, en la misma transacción y antes de modificar los contactos, un lote en `mcp_base_lotes` y una fila por contacto en `mcp_base_historial` (estado anterior); si no coinciden, revierte todo. `historial_base` (solo lectura con `mcp_ro`, que ya lee todo `vtgsa_ventas`) consulta por contacto o por lote. Detalle en `MEMORIA.md` sección 4. 144 pruebas, typecheck y paquete en 0. Las tablas y el `GRANT INSERT` a `mcp_base` existen (se ven en `SHOW GRANTS` del 19-nov); `SHOW CREATE TABLE` y `COUNT(*)` verificados el 19-nov (0 filas; las columnas coinciden con los `INSERT`; DDL guardado en `db/historial_base.sql`). Como `observaciones_anterior` es varchar(255) e `identificador_anterior` varchar(100), la copia usa `LEFT(...)` para que un texto largo no haga fallar la liberación. No registra `asignar_base_usuario` ni `encerar_cupo_usuario` ni lo anterior al despliegue.
+## HISTORIAL DE LIBERACIONES: `historial_base` (desplegado el 19-nov: PR #16, despliegue #18)
+`aplicar_base` registra cada liberación (lote en `mcp_base_lotes` y estado anterior de cada contacto en `mcp_base_historial`, en la misma transacción) y `historial_base` la consulta por contacto o por lote. Reglas en `MEMORIA.md` sección 4; DDL en `db/historial_base.sql`. No registra `asignar_base_usuario`, `encerar_cupo_usuario`, liberaciones anteriores ni las hechas a mano.
 
 ## SIGUIENTE PASO
-"crea el PR y despliega" (PR → merge → "Deploy to production" `ref=main` → `/health`). Después el usuario prueba en el chat (quitar y volver a agregar el conector): una liberación pequeña con `aplicar_base` y `historial_base` por ese contacto o por el lote. Pendiente aparte: borrar las ramas remotas ya fusionadas desde GitHub (Settings → Branches); `eager-bell-u1yr44` se puede borrar cuando este PR esté fusionado.
+El usuario prueba en el chat (quitar y volver a agregar el conector): una liberación pequeña con `aplicar_base` y luego `historial_base` por uno de esos contactos o por el `id_lote`; si algo no cuadra se ajusta. Pendiente aparte: borrar las ramas remotas ya fusionadas desde GitHub (Settings → Branches), incluida `claude/eager-bell-u1yr44` (ya fusionado su contenido en el PR #16). Fuera de eso: esperar indicaciones.

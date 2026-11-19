@@ -3,6 +3,7 @@ import { getConfig } from '../../config';
 import { dbService } from '../../services/dbService';
 import { writeDb, WriteTx } from '../../services/dbWriteService';
 import { LlamadasPorTelefono, consultarLlamadas } from '../../services/asteriskClient';
+import { getStore } from '../../deps';
 import { ToolResult } from '../types';
 import { REPORT_TIMEZONE, parseIso, resolveDateRange, todayInTimezone } from './dates';
 import { likePattern } from './asistenciaTool';
@@ -84,6 +85,7 @@ export interface BaseDeps {
   llamadas(telefonos: string[], desde: string, hasta: string): Promise<LlamadasPorTelefono>;
   transaccion<T>(fn: (tx: WriteTx) => Promise<T>): Promise<T>;
   ahora(): Date;
+  usuarioMcp(userId: string): Promise<string>;
   secreto(): string;
   log(linea: string): void;
 }
@@ -96,6 +98,14 @@ export const defaultDeps: BaseDeps = {
   llamadas: (telefonos, desde, hasta) => consultarLlamadas(telefonos, desde, hasta),
   transaccion: (fn) => writeDb.transaction(fn),
   ahora: () => new Date(),
+  usuarioMcp: async (userId) => {
+    try {
+      const u = await getStore().findUserById(Number(userId));
+      return u?.username || `usuario ${userId}`;
+    } catch {
+      return `usuario ${userId}`;
+    }
+  },
   secreto: () => getConfig().signingSecret,
   log: (l) => console.log(l)
 };
@@ -266,6 +276,24 @@ export const sqlPredictivo = (n: number) =>
   `UPDATE notas_registros SET ${SET_ANTERIORES}, asignado=0, estado=0, observaciones='', identificador=?, predictivo=1, intentos_predictivo=0, codigo_predictivo=0 WHERE banco = ? AND id_lista IN (${marcas(n)})`;
 export const SQL_CUPOS_INSERT =
   'INSERT INTO notas_registros_cupos (id_usuario, id_banco, id_identificador, cupo) SELECT id_usuario, ?, ?, 0 FROM usuarios WHERE (tipo=6) AND (estado=0)';
+// Historial (tablas mcp_base_lotes y mcp_base_historial): se copia el estado ANTES de modificar los contactos, en la misma transacción.
+export const SQL_LOTE_INSERT =
+  'INSERT INTO mcp_base_lotes (fecha_hora, usuario_mcp_id, usuario_mcp, accion, id_banco, identificador_nuevo, cantidad, cupos_creados, predictivos_desmarcados, filtros) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
+export const sqlHistorial = (n: number) =>
+  'INSERT INTO mcp_base_historial (id_lote, id_lista, fecha_hora, id_banco, asignado_anterior, estado_anterior, identificador_anterior, observaciones_anterior, fecha_asignacion_anterior) ' +
+  `SELECT ?, id_lista, ?, banco, asignado, estado, identificador, observaciones, fecha_asignacion FROM notas_registros WHERE banco = ? AND id_lista IN (${marcas(n)})`;
+export const SQL_CONTAR_CUPOS_USUARIOS = 'SELECT COUNT(*) AS n FROM usuarios WHERE tipo = 6 AND estado = 0';
+export const SQL_CONTAR_PREDICTIVOS = 'SELECT COUNT(*) AS n FROM notas_registros WHERE predictivo = 1';
+
+/** Fecha y hora de Ecuador como AAAA-MM-DD HH:MM:SS (el servidor corre en UTC). */
+export const fechaHoraEcuador = (now: Date): string => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: REPORT_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+  }).formatToParts(now);
+  const g = (t: string) => parts.find((p) => p.type === t)!.value;
+  return `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')}:${g('second')}`;
+};
+
 export const SQL_ENCERAR_CUPOS = 'UPDATE notas_registros_cupos SET cupo=0';
 
 export const lotes = <T>(lista: T[], tamano = LOTE_ACTUALIZACION): T[][] => {
@@ -531,27 +559,49 @@ export const handleAplicarBase = async (params: AplicarBaseParams, userId: strin
     const identificador = plan.identificador!;
     const bancoId = plan.banco.id;
 
+    const usuario = await deps.usuarioMcp(userId);
+    const fechaHora = fechaHoraEcuador(deps.ahora());
+    const filtrosJson = JSON.stringify({ filtro: plan.filtro, asterisk: plan.asterisk, para_predictivo: plan.modo === 'predictivo' });
+
     const resultado = await deps.transaccion(async (tx) => {
-      let desmarcados = 0;
+      let cuposEsperados: number | null = null;
+      let desmarcadosAntes: number | null = null;
       if (plan.modo === 'normal') {
         const dup = await tx.consultar('SELECT COUNT(*) AS n FROM notas_registros_cupos WHERE id_banco = ? AND id_identificador = ?', [bancoId, identificador]);
         if (numero(dup[0]?.n) > 0) throw new Error(`Ya existen cupos para "${identificador}"; no se aplicó nada.`);
+        cuposEsperados = numero((await tx.consultar(SQL_CONTAR_CUPOS_USUARIOS))[0]?.n);
       } else {
-        desmarcados = (await tx.ejecutar(SQL_PREDICTIVO_LIMPIAR)).affectedRows;
+        desmarcadosAntes = numero((await tx.consultar(SQL_CONTAR_PREDICTIVOS))[0]?.n);
       }
+
+      // Historial: lote + estado anterior de cada contacto, ANTES de modificarlos.
+      const lote = await tx.ejecutar(SQL_LOTE_INSERT, [
+        fechaHora, userId, usuario, plan.modo === 'predictivo' ? 'predictivo' : 'liberar', bancoId, identificador, plan.ids.length,
+        cuposEsperados, desmarcadosAntes, filtrosJson
+      ]);
+      let historial = 0;
+      for (const lote_ids of lotes(plan.ids)) {
+        historial += (await tx.ejecutar(sqlHistorial(lote_ids.length), [lote.insertId, fechaHora, bancoId, ...lote_ids])).affectedRows;
+      }
+      if (historial !== plan.ids.length) {
+        throw new Error(`El historial (${historial}) no coincide con los contactos a liberar (${plan.ids.length}); no se aplicó nada.`);
+      }
+
+      let desmarcados = 0;
+      if (plan.modo === 'predictivo') desmarcados = (await tx.ejecutar(SQL_PREDICTIVO_LIMPIAR)).affectedRows;
       let actualizados = 0;
-      for (const lote of lotes(plan.ids)) {
-        const sql = plan.modo === 'normal' ? sqlLiberar(lote.length) : sqlPredictivo(lote.length);
-        actualizados += (await tx.ejecutar(sql, [identificador, bancoId, ...lote])).affectedRows;
+      for (const lote_ids of lotes(plan.ids)) {
+        const sql = plan.modo === 'normal' ? sqlLiberar(lote_ids.length) : sqlPredictivo(lote_ids.length);
+        actualizados += (await tx.ejecutar(sql, [identificador, bancoId, ...lote_ids])).affectedRows;
       }
       let cupos = 0;
       if (plan.modo === 'normal') cupos = (await tx.ejecutar(SQL_CUPOS_INSERT, [bancoId, identificador])).affectedRows;
-      return { desmarcados, actualizados, cupos };
+      return { desmarcados, actualizados, cupos, idLote: lote.insertId, historial };
     });
 
     deps.log(
       `[AUDIT] ${JSON.stringify({
-        accion: 'aplicar_base', usuario: userId, modo: plan.modo, banco: bancoId, identificador,
+        accion: 'aplicar_base', usuario: userId, id_lote: resultado.idLote, modo: plan.modo, banco: bancoId, identificador,
         registros: plan.ids.length, filas_actualizadas: resultado.actualizados, cupos_creados: resultado.cupos,
         predictivos_desmarcados: resultado.desmarcados, ids_hash: hashIds(plan.ids), primer_id: plan.ids[0], ultimo_id: plan.ids[plan.ids.length - 1]
       })}`
@@ -561,11 +611,12 @@ export const handleAplicarBase = async (params: AplicarBaseParams, userId: strin
       modo: plan.modo === 'predictivo' ? 'PREDICTIVO' : 'normal',
       identificador,
       banco: `${plan.banco.id} ${plan.banco.nombre}`,
+      id_lote: resultado.idLote,
       registros_liberados: plan.ids.length,
       filas_actualizadas: resultado.actualizados,
       cupos_creados: plan.modo === 'normal' ? resultado.cupos : undefined,
       predictivos_desmarcados: plan.modo === 'predictivo' ? resultado.desmarcados : undefined,
-      nota: 'Los valores anteriores de cada registro quedaron guardados en las columnas ...Anterior.'
+      nota: `Los valores anteriores de cada registro quedaron en las columnas ...Anterior y en el historial (lote ${resultado.idLote}); consúltelo con historial_base.`
     });
   } catch (error: any) {
     return falla(`No se aplicó la liberación (se revirtió cualquier cambio): ${error?.message || String(error)}`);

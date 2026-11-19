@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BaseDeps, FilaBase, SQL_CUPOS_INSERT, SQL_ENCERAR_CUPOS, SQL_PREDICTIVO_LIMPIAR,
-  buildBaseQuery, construirIdentificador, evaluarLlamadas, generarCodigo, handleAplicarBase, handleBuscarBase,
+  BaseDeps, FilaBase, SQL_CUPOS_INSERT, SQL_ENCERAR_CUPOS, SQL_LOTE_INSERT, SQL_PREDICTIVO_LIMPIAR,
+  buildBaseQuery, fechaHoraEcuador, sqlHistorial, construirIdentificador, evaluarLlamadas, generarCodigo, handleAplicarBase, handleBuscarBase,
   handleEncerarCupos, normalizarFiltro, resolverEstados, sqlLiberar, sqlPredictivo, validarCodigo
 } from '../src/mcp/tools/baseTool';
 import { consultarLlamadas, LlamadasPorTelefono } from '../src/services/asteriskClient';
@@ -36,7 +36,7 @@ const BILLSEC: Record<string, number> = {
 const llamadasReales = (): LlamadasPorTelefono =>
   new Map(Object.entries(BILLSEC).map(([t, b]) => [t, { llamadas: 1, duracion: b + 5, billsec: b, ultima_llamada: '2026-11-05 18:04:00' }]));
 
-interface Opciones { cupos?: number; filas?: FilaBase[]; maxFilas?: boolean }
+interface Opciones { cupos?: number; filas?: FilaBase[]; maxFilas?: boolean; historialCorto?: boolean }
 function crearDeps(op: Opciones = {}) {
   const escrituras: Array<{ sql: string; values: Array<string | number> }> = [];
   let transacciones = 0;
@@ -62,14 +62,21 @@ function crearDeps(op: Opciones = {}) {
       return fn({
         ejecutar: async (sql, values = []) => {
           escrituras.push({ sql, values });
-          if (sql === SQL_PREDICTIVO_LIMPIAR) return { affectedRows: 761 };
-          if (sql === SQL_CUPOS_INSERT) return { affectedRows: 39 };
-          if (sql === SQL_ENCERAR_CUPOS) return { affectedRows: 120 };
-          return { affectedRows: values.length - 2 };
+          if (sql === SQL_LOTE_INSERT) return { affectedRows: 1, insertId: 77 };
+          if (sql.startsWith('INSERT INTO mcp_base_historial')) return { affectedRows: values.length - 3 - (op.historialCorto ? 1 : 0), insertId: 0 };
+          if (sql === SQL_PREDICTIVO_LIMPIAR) return { affectedRows: 761, insertId: 0 };
+          if (sql === SQL_CUPOS_INSERT) return { affectedRows: 39, insertId: 0 };
+          if (sql === SQL_ENCERAR_CUPOS) return { affectedRows: 120, insertId: 0 };
+          return { affectedRows: values.length - 2, insertId: 0 };
         },
-        consultar: async () => [{ n: op.cupos ?? 0 }]
+        consultar: async (sql) => {
+          if (/FROM usuarios/.test(sql)) return [{ n: 39 }];
+          if (/predictivo = 1/.test(sql)) return [{ n: 761 }];
+          return [{ n: op.cupos ?? 0 }];
+        }
       });
     },
+    usuarioMcp: async () => 'cmino',
     ahora: () => NOW,
     secreto: () => SECRETO,
     log: () => undefined
@@ -154,7 +161,7 @@ test('buscar_base: vista previa con cifras reales, identificador, cupos y códig
   assert.deepEqual(t.consultasAsterisk[0].length, 12);
 });
 
-test('aplicar_base (normal): libera los 5, crea cupos con el id de banco y el identificador, en una transacción', async () => {
+test('aplicar_base (normal): historial + liberación de los 5 + cupos con el id de banco y el identificador, en una transacción', async () => {
   const t = crearDeps();
   const codigo = payload(await handleBuscarBase(PARAMS, 'u1', t.deps)).codigo_confirmacion;
   const r = await handleAplicarBase({ ...PARAMS, codigo_confirmacion: codigo }, 'u1', t.deps);
@@ -162,15 +169,34 @@ test('aplicar_base (normal): libera los 5, crea cupos con el id de banco y el id
   assert.equal(p.aplicado, true);
   assert.equal(p.registros_liberados, 5);
   assert.equal(p.cupos_creados, 39);
+  assert.equal(p.id_lote, 77);
   assert.equal(t.transacciones(), 1);
-  assert.equal(t.escrituras.length, 2);
-  assert.equal(t.escrituras[0].sql, sqlLiberar(5));
-  assert.deepEqual(t.escrituras[0].values, ['2026-11-10 DIN-5', 2, 918520, 918521, 918522, 918523, 918524]);
+  // el historial se guarda ANTES de modificar los contactos
+  assert.deepEqual(t.escrituras.map((e) => e.sql), [SQL_LOTE_INSERT, sqlHistorial(5), sqlLiberar(5), SQL_CUPOS_INSERT]);
+  const [lote, hist, libera, cupos] = t.escrituras;
+  assert.deepEqual(lote.values.slice(0, 9), ['2026-11-10 12:00:00', 'u1', 'cmino', 'liberar', 2, '2026-11-10 DIN-5', 5, 39, null]);
+  assert.equal(JSON.parse(String(lote.values[9])).asterisk.billsec_max, 0);
+  assert.deepEqual(hist.values, [77, '2026-11-10 12:00:00', 2, 918520, 918521, 918522, 918523, 918524]);
+  assert.deepEqual(libera.values, ['2026-11-10 DIN-5', 2, 918520, 918521, 918522, 918523, 918524]);
   // los "Anterior" se guardan ANTES de poner asignado=0 / estado=0 (el orden importa en MySQL)
-  assert.match(t.escrituras[0].sql, /^UPDATE notas_registros SET asignadoAnterior=asignado, estadoAnterior=estado, identificadorAnterior=identificador, observacionesAnterior=observaciones, fechaAsignadoAnterior=fecha_asignacion, asignado=0, estado=0, observaciones='', identificador=\? WHERE/);
-  assert.equal(t.escrituras[1].sql, SQL_CUPOS_INSERT);
-  assert.deepEqual(t.escrituras[1].values, [2, '2026-11-10 DIN-5']);
+  assert.match(libera.sql, /^UPDATE notas_registros SET asignadoAnterior=asignado, estadoAnterior=estado, identificadorAnterior=identificador, observacionesAnterior=observaciones, fechaAsignadoAnterior=fecha_asignacion, asignado=0, estado=0, observaciones='', identificador=\? WHERE/);
+  assert.deepEqual(cupos.values, [2, '2026-11-10 DIN-5']);
   assert.match(SQL_CUPOS_INSERT, /SELECT id_usuario, \?, \?, 0 FROM usuarios WHERE \(tipo=6\) AND \(estado=0\)/);
+  assert.match(sqlHistorial(1), /SELECT \?, id_lista, \?, banco, asignado, estado, identificador, observaciones, fecha_asignacion FROM notas_registros WHERE banco = \? AND id_lista IN \(\?\)/);
+});
+
+test('si el historial no coincide con los contactos, se revierte todo y no se modifica ningún contacto', async () => {
+  const t = crearDeps({ historialCorto: true });
+  const codigo = payload(await handleBuscarBase(PARAMS, 'u1', t.deps)).codigo_confirmacion;
+  const r = await handleAplicarBase({ ...PARAMS, codigo_confirmacion: codigo }, 'u1', t.deps);
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /historial/);
+  assert.equal(t.escrituras.some((e) => e.sql === sqlLiberar(5) || e.sql === SQL_CUPOS_INSERT), false);
+});
+
+test('fecha y hora de Ecuador (UTC-5) para el historial', () => {
+  assert.equal(fechaHoraEcuador(new Date('2026-11-10T17:00:00Z')), '2026-11-10 12:00:00');
+  assert.equal(fechaHoraEcuador(new Date('2026-11-11T03:30:00Z')), '2026-11-10 22:30:00');
 });
 
 test('aplicar_base (predictivo): desmarca los predictivos, marca estos y NO crea cupos', async () => {
@@ -182,7 +208,8 @@ test('aplicar_base (predictivo): desmarca los predictivos, marca estos y NO crea
   const p = payload(await handleAplicarBase({ ...pr, codigo_confirmacion: prev.codigo_confirmacion }, 'u1', t.deps));
   assert.equal(p.aplicado, true);
   assert.equal(p.predictivos_desmarcados, 761);
-  assert.deepEqual(t.escrituras.map((e) => e.sql), [SQL_PREDICTIVO_LIMPIAR, sqlPredictivo(5)]);
+  assert.deepEqual(t.escrituras.map((e) => e.sql), [SQL_LOTE_INSERT, sqlHistorial(5), SQL_PREDICTIVO_LIMPIAR, sqlPredictivo(5)]);
+  assert.deepEqual(t.escrituras[0].values.slice(3, 9), ['predictivo', 2, '2026-11-10 DIN-PREDICTIVO', 5, null, 761]);
   assert.match(sqlPredictivo(1), /identificador=\?, predictivo=1, intentos_predictivo=0, codigo_predictivo=0 WHERE/);
 });
 
@@ -192,7 +219,7 @@ test('aplicar_base con nombre del usuario: respeta el nombre', async () => {
   const prev = payload(await handleBuscarBase(pr, 'u1', t.deps));
   assert.equal(prev.identificador_nuevo, '2026-11-10 DIN-FUERTE');
   await handleAplicarBase({ ...pr, codigo_confirmacion: prev.codigo_confirmacion }, 'u1', t.deps);
-  assert.equal(t.escrituras[0].values[0], '2026-11-10 DIN-FUERTE');
+  assert.equal(t.escrituras.find((e) => e.sql === sqlLiberar(5))!.values[0], '2026-11-10 DIN-FUERTE');
 });
 
 test('aplicar_base no escribe con código incorrecto, de otro usuario, vencido o con parámetros distintos', async () => {

@@ -29,11 +29,12 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 | `encontrar_contacto` | Busca contactos de `notas_registros` por documento, nombres, teléfono, correo o asesor (uno o varios registros) | `src/mcp/tools/contactoTool.ts` |
 | `asignar_base_usuario` | Asigna cupo de una base (banco + identificador) a uno o varios asesores tipo 6 activos; modo `sumar` (defecto) o `fijar`; identificador obligatorio; dos pasos | `src/mcp/tools/cuposTool.ts` |
 | `encerar_cupo_usuario` | Pone cupo 0 solo a los asesores indicados (todas sus bases o una); dos pasos | `src/mcp/tools/cuposTool.ts` |
+| `historial_base` | Solo lectura: historial de liberaciones de `aplicar_base` por contacto (id_lista, teléfono o documento) o por lote/fecha/banco (**código listo, sin desplegar**) | `src/mcp/tools/historialBaseTool.ts` |
 | `buscar_base` | Solo lectura: contactos de `notas_registros` sin llamadas (cruce con Asterisk) y vista previa con código de confirmación | `src/mcp/tools/baseTool.ts` |
 | `aplicar_base` | Libera la base de `buscar_base` (normal o predictivo) en una transacción, solo si el código coincide | `src/mcp/tools/baseTool.ts` |
 | `encerar_cupos` | Pone en 0 los cupos de `notas_registros_cupos` (dos pasos, solo a pedido) | `src/mcp/tools/baseTool.ts` |
 
-- Código: 137 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
+- Código: 144 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
 - Último despliegue: workflow "Deploy to production" **#17** (PR #15, 19-nov, `main` = `6621bbf`). `/health` = 200. CI en verde.
 - Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
 - SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
@@ -54,5 +55,8 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 5. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 6. Mantenimiento de ramas hecho el 17-nov: se borraron las ramas remotas ya fusionadas; quedan `main` y la rama de trabajo.
 
+## EN CURSO: `historial_base` y registro de liberaciones (código listo en el PR, SIN desplegar)
+Traído a `main` desde la rama `claude/eager-bell-u1yr44` (commit `237da06`, 10-nov) y adaptado a lo nuevo (conflictos resueltos 19-nov). `aplicar_base` ahora guarda, en la misma transacción y antes de modificar los contactos, un lote en `mcp_base_lotes` y una fila por contacto en `mcp_base_historial` (estado anterior); si no coinciden, revierte todo. `historial_base` (solo lectura con `mcp_ro`, que ya lee todo `vtgsa_ventas`) consulta por contacto o por lote. Detalle en `MEMORIA.md` sección 4. 144 pruebas, typecheck y paquete en 0. Las tablas y el `GRANT INSERT` a `mcp_base` existen (se ven en `SHOW GRANTS` del 19-nov); falta que el usuario pegue `SHOW CREATE TABLE` de ambas para confirmar que las columnas coinciden con los `INSERT` del código (el DDL no está en el repo). No registra `asignar_base_usuario` ni `encerar_cupo_usuario` ni lo anterior al despliegue.
+
 ## SIGUIENTE PASO
-`asignar_base_usuario` y `encerar_cupo_usuario` están desplegadas (despliegue #17, 19-nov; 11 herramientas). El usuario las prueba en el chat (quitar y volver a agregar el conector): primero la vista previa de `asignar_base_usuario` con un asesor y luego confirmar; y `encerar_cupo_usuario` con un asesor de prueba (p. ej. VENDEDOR 21). Si algo no cuadra se ajusta. Pendientes aparte: decidir qué hacer con `historial_base` (rama `claude/eager-bell-u1yr44`, sin fusionar; el historial de asignar/encerar cupos se vería junto con él) y borrar las ramas remotas ya fusionadas desde GitHub (Settings → Branches), salvo `eager-bell-u1yr44`. Fuera de eso: esperar indicaciones.
+El usuario pega `SHOW CREATE TABLE` y `COUNT(*)` de `mcp_base_lotes` y `mcp_base_historial`; verificar columnas, guardar el DDL en `db/historial_base.sql` y luego "crea el PR y despliega". Después prueba en el chat (quitar y volver a agregar el conector): una liberación pequeña con `aplicar_base` y `historial_base` por ese contacto o por el lote. Si se despliega con columnas distintas, `aplicar_base` falla y revierte (no deja cambios a medias). Pendiente aparte: borrar las ramas remotas ya fusionadas desde GitHub (Settings → Branches); `eager-bell-u1yr44` se puede borrar cuando este PR esté fusionado.

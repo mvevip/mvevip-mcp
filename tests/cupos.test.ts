@@ -69,11 +69,11 @@ function crear(op: Opciones = {}) {
       return fn({
         ejecutar: async (sql, values = []) => {
           escrituras.push({ sql, values });
-          if (sql === SQL_CUPO_INSERT) return { affectedRows: 1 };
-          if (sql === SQL_CUPO_UPDATE) return { affectedRows: 1 };
+          if (sql === SQL_CUPO_INSERT) return { affectedRows: 1, insertId: 0 };
+          if (sql === SQL_CUPO_UPDATE) return { affectedRows: 1, insertId: 0 };
           const conIdent = /id_banco = \? AND id_identificador = \?/.test(sql);
           const ids = (conIdent ? values.slice(0, -2) : values) as number[];
-          return { affectedRows: cupos.filter((f) => f.cupo > 0 && ids.includes(f.id_usuario)).length + (op.affectedExtra ?? 0) };
+          return { affectedRows: cupos.filter((f) => f.cupo > 0 && ids.includes(f.id_usuario)).length + (op.affectedExtra ?? 0), insertId: 0 };
         },
         consultar: async (sql, values = []) => {
           if (sql === SQL_CUPO_FILAS) return [{ n: cupos.filter((f) => f.id_usuario === values[0] && f.id_banco === values[1] && f.id_identificador === values[2]).length }];
@@ -252,7 +252,7 @@ test('asignar: si la fila cambió dentro de la transacción se revierte', async 
   const original = t.deps.transaccion;
   const deps: BaseDeps = {
     ...t.deps,
-    transaccion: (fn) => original((tx) => fn({ ...tx, ejecutar: async (sql, values) => (sql === SQL_CUPO_UPDATE ? { affectedRows: 0 } : tx.ejecutar(sql, values)) }))
+    transaccion: (fn) => original((tx) => fn({ ...tx, ejecutar: async (sql, values) => (sql === SQL_CUPO_UPDATE ? { affectedRows: 0, insertId: 0 } : tx.ejecutar(sql, values)) }))
   };
   const r = await handleAsignarBaseUsuario({ ...params, codigo_confirmacion: codigo }, 'u1', deps);
   assert.equal(r.isError, true);

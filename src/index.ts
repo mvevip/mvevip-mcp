@@ -27,12 +27,15 @@ import {
   BuscarBaseInputSchema,
   AplicarBaseInputSchema,
   EncerarCuposInputSchema,
+  AsignarBaseUsuarioInputSchema,
+  EncerarCupoUsuarioInputSchema,
   AsistenciaInputSchema
 } from './mcp/types';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
 import { handleCuadro } from './mcp/tools/cuadroTool';
 import { handleRequerimientos } from './mcp/tools/requerimientosTool';
 import { handleBuscarBase, handleAplicarBase, handleEncerarCupos } from './mcp/tools/baseTool';
+import { handleAsignarBaseUsuario, handleEncerarCupoUsuario } from './mcp/tools/cuposTool';
 import { handleCruceVentas } from './mcp/tools/cruceVentasTool';
 import { handleAsistencia } from './mcp/tools/asistenciaTool';
 import { handleEncontrarContacto } from './mcp/tools/contactoTool';
@@ -621,8 +624,48 @@ const MCP_TOOLS: McpToolDefinition[] = [
         codigo_confirmacion: { type: 'string', description: 'Código devuelto por la primera llamada. Omitir en la primera llamada.' }
       }
     }
+  },
+  {
+    name: 'asignar_base_usuario',
+    description: 'ESCRIBE en la base de datos: asigna cupo de una base (banco + identificador) a UNO O VARIOS asesores (usuarios tipo 6 activos), por ejemplo "asígnale 20 datos de la base 2026-11-17 VIS-1244 a VENDEDOR 21". El cupo es el acumulado asignado al asesor; el CRM le entrega lo pendiente (cupo - ya entregado). Modo "sumar" (por defecto): suma la cantidad al cupo (si el asesor ya recibió más que su cupo, p. ej. porque se le enceró, parte de lo ya entregado para que le lleguen exactamente N datos nuevos); modo "fijar": deja el cupo exactamente en la cantidad. El IDENTIFICADOR ES OBLIGATORIO: si el usuario no lo dio, NO lo asuma ni lo invente: llame sin él y la herramienta devolverá los más recientes para que usted se los pregunte. Funciona en dos pasos: sin codigo_confirmacion devuelve la vista previa (cupo actual, ya entregado, cupo nuevo y pendiente de cada asesor, y advertencias, p. ej. si se piden más datos que contactos libres) y NO modifica nada; muéstresela al usuario y, solo con su confirmación explícita, llame de nuevo con los MISMOS parámetros y el codigo_confirmacion. Máximo 500 por asesor y por operación. Para poner el cupo en 0 use encerar_cupo_usuario.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        identificador: { type: 'string', description: 'Identificador (nombre de la base) tal como está en los cupos, p. ej. "2026-11-17 VIS-1244". Obligatorio: si falta, pregúntelo al usuario.' },
+        banco: { type: 'integer', description: 'Id del banco. Solo hace falta si el identificador existe en más de un banco.' },
+        usuarios: {
+          type: 'array',
+          description: 'Asesores a los que asignar. Cada uno por nombre (o parte del nombre) o id_usuario; con "cupo" propio o usando el cupo común.',
+          items: {
+            type: 'object',
+            properties: {
+              usuario: { type: ['string', 'integer'], description: 'Nombre completo o parcial del asesor, o su id_usuario.' },
+              cupo: { type: 'integer', minimum: 1, maximum: 500, description: 'Cantidad para este asesor (si no se indica, se usa "cupo").' }
+            },
+            required: ['usuario']
+          }
+        },
+        cupo: { type: 'integer', minimum: 1, maximum: 500, description: 'Cantidad común para los asesores que no tengan su propio cupo.' },
+        modo: { type: 'string', enum: ['sumar', 'fijar'], description: "'sumar' (por defecto) suma al cupo; 'fijar' deja el cupo exactamente en la cantidad." },
+        codigo_confirmacion: { type: 'string', description: 'Código devuelto por la vista previa. Omitir en la primera llamada.' }
+      }
+    }
+  },
+  {
+    name: 'encerar_cupo_usuario',
+    description: 'ESCRIBE en la base de datos: pone cupo = 0 SOLO a los asesores indicados ("quítale / encérale el cupo al asesor XXX"); los demás no se tocan. Sin identificador encera todos los cupos de ese asesor (todas las bases); con identificador (y banco si hace falta) solo esa base. Lo ya entregado (total_asignado) no cambia. Para encerar a TODOS los asesores use encerar_cupos. Funciona en dos pasos: sin codigo_confirmacion devuelve la vista previa (filas y cupos de cada asesor) y NO modifica nada; muéstrela al usuario y, solo con su confirmación explícita, llame de nuevo con los MISMOS parámetros y el codigo_confirmacion.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        usuarios: { type: 'array', items: { type: ['string', 'integer'] }, description: 'Asesores (nombre completo o parcial, o id_usuario). Obligatorio.' },
+        identificador: { type: 'string', description: 'Opcional: encerar solo el cupo de esta base. Sin él se encera todo el cupo del asesor.' },
+        banco: { type: 'integer', description: 'Id del banco; solo con identificador y si ese identificador existe en más de un banco.' },
+        codigo_confirmacion: { type: 'string', description: 'Código devuelto por la vista previa. Omitir en la primera llamada.' }
+      }
+    }
   }
 ];
+
 
 // ---------------------------------------------------------------------------
 // 6. Endpoint Stateless MCP JSON-RPC (/mcp)
@@ -715,6 +758,16 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'aplicar_base': {
             const parsed = AplicarBaseInputSchema.parse(toolArgs);
             return rpcResult(await handleAplicarBase(parsed, String((req as any).userId)));
+          }
+
+          case 'asignar_base_usuario': {
+            const parsed = AsignarBaseUsuarioInputSchema.parse(toolArgs);
+            return rpcResult(await handleAsignarBaseUsuario(parsed, String((req as any).userId)));
+          }
+
+          case 'encerar_cupo_usuario': {
+            const parsed = EncerarCupoUsuarioInputSchema.parse(toolArgs);
+            return rpcResult(await handleEncerarCupoUsuario(parsed, String((req as any).userId)));
           }
 
           case 'encerar_cupos': {

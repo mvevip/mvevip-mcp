@@ -110,3 +110,19 @@ export const EncontrarContactoInputSchema = z.object({
   campo: z.enum(['todos', 'documento', 'nombres', 'telefono', 'correo', 'asesor']).optional(),
   limite: z.number().int().min(1).max(200).optional(),
 });
+
+const UsuarioRef = z.union([z.string().min(1).max(80), z.number().int().positive()]);
+export const AsignarBaseUsuarioInputSchema = z.object({
+  identificador: z.string().max(100).optional(),
+  banco: z.number().int().min(1).max(100000).optional(),
+  usuarios: z.array(z.object({ usuario: UsuarioRef, cupo: z.number().int().min(1).max(500).optional() })).min(1).max(40).optional(),
+  cupo: z.number().int().min(1).max(500).optional(),
+  modo: z.enum(['sumar', 'fijar']).optional(),
+  codigo_confirmacion: z.string().min(10).max(80).optional(),
+});
+export const EncerarCupoUsuarioInputSchema = z.object({
+  usuarios: z.array(UsuarioRef).min(1).max(40).optional(),
+  identificador: z.string().max(100).optional(),
+  banco: z.number().int().min(1).max(100000).optional(),
+  codigo_confirmacion: z.string().min(10).max(80).optional(),
+});

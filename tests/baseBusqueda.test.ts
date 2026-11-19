@@ -182,7 +182,7 @@ test('aplicar_base (normal): historial + liberación de los 5 + cupos con el id 
   assert.match(libera.sql, /^UPDATE notas_registros SET asignadoAnterior=asignado, estadoAnterior=estado, identificadorAnterior=identificador, observacionesAnterior=observaciones, fechaAsignadoAnterior=fecha_asignacion, asignado=0, estado=0, observaciones='', identificador=\? WHERE/);
   assert.deepEqual(cupos.values, [2, '2026-11-10 DIN-5']);
   assert.match(SQL_CUPOS_INSERT, /SELECT id_usuario, \?, \?, 0 FROM usuarios WHERE \(tipo=6\) AND \(estado=0\)/);
-  assert.match(sqlHistorial(1), /SELECT \?, id_lista, \?, banco, asignado, estado, identificador, observaciones, fecha_asignacion FROM notas_registros WHERE banco = \? AND id_lista IN \(\?\)/);
+  assert.match(sqlHistorial(1), /SELECT \?, id_lista, \?, banco, asignado, estado, LEFT\(identificador, 100\), LEFT\(observaciones, 255\), fecha_asignacion FROM notas_registros WHERE banco = \? AND id_lista IN \(\?\)/);
 });
 
 test('si el historial no coincide con los contactos, se revierte todo y no se modifica ningún contacto', async () => {

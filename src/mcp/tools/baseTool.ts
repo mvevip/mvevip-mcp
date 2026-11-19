@@ -277,11 +277,12 @@ export const sqlPredictivo = (n: number) =>
 export const SQL_CUPOS_INSERT =
   'INSERT INTO notas_registros_cupos (id_usuario, id_banco, id_identificador, cupo) SELECT id_usuario, ?, ?, 0 FROM usuarios WHERE (tipo=6) AND (estado=0)';
 // Historial (tablas mcp_base_lotes y mcp_base_historial): se copia el estado ANTES de modificar los contactos, en la misma transacción.
+// Las columnas del historial son varchar(100) y varchar(255): LEFT evita que un texto más largo haga fallar (y revertir) la liberación.
 export const SQL_LOTE_INSERT =
   'INSERT INTO mcp_base_lotes (fecha_hora, usuario_mcp_id, usuario_mcp, accion, id_banco, identificador_nuevo, cantidad, cupos_creados, predictivos_desmarcados, filtros) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)';
 export const sqlHistorial = (n: number) =>
   'INSERT INTO mcp_base_historial (id_lote, id_lista, fecha_hora, id_banco, asignado_anterior, estado_anterior, identificador_anterior, observaciones_anterior, fecha_asignacion_anterior) ' +
-  `SELECT ?, id_lista, ?, banco, asignado, estado, identificador, observaciones, fecha_asignacion FROM notas_registros WHERE banco = ? AND id_lista IN (${marcas(n)})`;
+  `SELECT ?, id_lista, ?, banco, asignado, estado, LEFT(identificador, 100), LEFT(observaciones, 255), fecha_asignacion FROM notas_registros WHERE banco = ? AND id_lista IN (${marcas(n)})`;
 export const SQL_CONTAR_CUPOS_USUARIOS = 'SELECT COUNT(*) AS n FROM usuarios WHERE tipo = 6 AND estado = 0';
 export const SQL_CONTAR_PREDICTIVOS = 'SELECT COUNT(*) AS n FROM notas_registros WHERE predictivo = 1';
 

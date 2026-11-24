@@ -62,5 +62,8 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 ## EN PRUEBA: `pagos_facturacion` (desplegada el 24-nov, despliegue #20)
 Reporte de abonos facturados de `mve.mve_abonos` (no solo de ventas) con concepto (`cod_descripcion`), forma de pago (banco y tipo), origen, destino y usuario. Reglas y cifras reales en `MEMORIA.md` sección 4. El `GRANT` de facturación está aplicado. 157 pruebas, typecheck, paquete y `npm audit` en 0.
 
+## EN CURSO: `pagos_facturacion` con `vista=pendiente` (código listo en la rama de trabajo, SIN desplegar)
+Ajuste pedido el 24-nov tras probar la herramienta: lo pendiente de facturar (abonos en estado 1 y 2 y pagos de ventas sin abono) se muestra con detalle, separado de lo facturado y sin total combinado. Los estados 3, 4 y 7 no cuentan (solo contador aparte). Detalle en `MEMORIA.md` sección 4. Sin `GRANT` nuevo. 164 pruebas, typecheck, paquete y `npm audit` en 0.
+
 ## SIGUIENTE PASO (para retomar)
-El usuario prueba `pagos_facturacion` en el chat (quitar y volver a agregar el conector) y compara: octubre por fecha de factura debe dar 523 abonos y 269 791,95 (las ventas anuladas se excluyen: 14 abonos / 9 583,73); forma de pago más usada; comparativo con 2025. Si algo no cuadra, el usuario pega el resultado y se ajusta. Fuera de eso, esperar indicaciones para nuevas herramientas (flujo de `MEMORIA.md` sección 5).
+"crea el PR y despliega" (PR → merge → "Deploy to production" `ref=main` → `/health`). Después el usuario prueba en el chat (quitar y volver a agregar el conector): `vista=pendiente` del mes actual (cuáles faltan por facturar, con días pendientes) y comprueba que noviembre muestre unos 35 pagos sin abono por unos 27 808 (al 24-nov). Queda también por revisar con el usuario los resultados de su primera prueba de `pagos_facturacion` (el archivo no llegó). Fuera de eso, esperar indicaciones para nuevas herramientas.

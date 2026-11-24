@@ -152,3 +152,9 @@ export const PagosFacturacionInputSchema = z.object({
   direccion: z.enum(['asc', 'desc']).optional(),
   comparar_anio_anterior: z.boolean().optional(),
 });
+
+export const EncontrarClienteInputSchema = z.object({
+  texto: z.string().min(1).max(80),
+  campo: z.enum(['todos', 'documento', 'nombres', 'telefono', 'correo']).optional(),
+  limite: z.number().int().min(1).max(200).optional(),
+});

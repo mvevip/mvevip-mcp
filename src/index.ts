@@ -30,6 +30,7 @@ import {
   AsignarBaseUsuarioInputSchema,
   EncerarCupoUsuarioInputSchema,
   HistorialBaseInputSchema,
+  PagosFacturacionInputSchema,
   AsistenciaInputSchema
 } from './mcp/types';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
@@ -38,6 +39,7 @@ import { handleRequerimientos } from './mcp/tools/requerimientosTool';
 import { handleBuscarBase, handleAplicarBase, handleEncerarCupos } from './mcp/tools/baseTool';
 import { handleAsignarBaseUsuario, handleEncerarCupoUsuario } from './mcp/tools/cuposTool';
 import { handleHistorialBase } from './mcp/tools/historialBaseTool';
+import { handlePagosFacturacion } from './mcp/tools/pagosFacturacionTool';
 import { handleCruceVentas } from './mcp/tools/cruceVentasTool';
 import { handleAsistencia } from './mcp/tools/asistenciaTool';
 import { handleEncontrarContacto } from './mcp/tools/contactoTool';
@@ -684,6 +686,28 @@ const MCP_TOOLS: McpToolDefinition[] = [
         limite: { type: 'number', description: 'Máximo de filas (por defecto 50; hasta 300).' }
       }
     }
+  },
+  {
+    name: 'pagos_facturacion',
+    description: 'Abonos FACTURADOS de MVEVIP (SOLO LECTURA): cuánto se facturó, por qué concepto, con qué forma de pago, de qué origen y qué usuario lo registró. Toma los abonos del CRM (mve_abonos) en estado facturado (5 y 6), vengan o no de ventas, con el valor del abono (abo_valor, una sola vez por abono) y sin las ventas anuladas. El concepto es la descripción de la cotización (PAQUETE, FORMULARIOS, FEE CAMBIO DESTINO, IMPUESTOS, SEGURO, etc.). La forma de pago es el banco o tarjeta del abono y su tipo (tarjeta de crédito, depósitos, efectivo). fecha_base: "venta" (por defecto; fecha de venta del contrato, y la fecha del abono para los abonos de otros módulos), "factura" (fecha en que se facturó) o "abono" (fecha en que se ingresó el abono). Período: mes y anio (por defecto el mes actual) o fecha_desde y fecha_hasta. agrupar_por: concepto (por defecto), forma_pago, tipo_pago, origen (ventas u otros módulos), destino (destino o promoción de la cotización), usuario, mes_factura, dia_factura o ninguno (detalle con número de factura). comparar_anio_anterior=true trae el mismo período del año anterior con su variación. Con fecha_base=venta avisa además lo que falta por facturar de esas ventas. Si hay abonos con la forma de pago mal ingresada los incluye y lo avisa. Úsela para "¿cuál fue la forma de pago más usada en octubre?" (agrupar_por=forma_pago, ordenar_por=abonos), "¿cuánto y cómo se facturó el mes pasado?" (fecha_base=factura), "ventas de octubre y cuándo se facturaron" (fecha_base=venta, agrupar_por=mes_factura), facturado por concepto, por usuario o comparado con el año anterior.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mes: { type: 'number', description: 'Mes 1-12. Omitir para el mes actual.' },
+        anio: { type: 'number', description: 'Año (ej: 2026). Omitir para el año actual.' },
+        fecha_desde: { type: 'string', description: 'Inicio del rango (YYYY-MM-DD), inclusive. Alternativa a mes/anio.' },
+        fecha_hasta: { type: 'string', description: 'Fin del rango (YYYY-MM-DD), inclusive.' },
+        fecha_base: { type: 'string', enum: ['venta', 'factura', 'abono'], description: "Qué fecha define el período: 'venta' (por defecto), 'factura' (abo_fecha_factura) o 'abono' (abo_fecha)." },
+        agrupar_por: {
+          type: 'string',
+          enum: ['ninguno', 'concepto', 'forma_pago', 'tipo_pago', 'origen', 'destino', 'usuario', 'mes_factura', 'dia_factura'],
+          description: "Desglose. Por defecto 'concepto'. 'ninguno' devuelve cada abono con su factura (máx. 500)."
+        },
+        ordenar_por: { type: 'string', description: "Al agrupar: grupo, abonos o valor (por defecto valor; mes_factura y dia_factura van por grupo). Sin agrupar: id_abono, factura, fecha_factura, fecha_abono, fecha_venta, origen, valor, forma_pago, tipo_pago, destino, usuario." },
+        direccion: { type: 'string', enum: ['asc', 'desc'], description: 'Dirección del orden.' },
+        comparar_anio_anterior: { type: 'boolean', description: 'Si es true agrega el mismo período del año anterior y la variación (por grupo al agrupar).' }
+      }
+    }
   }
 ];
 
@@ -799,6 +823,11 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'historial_base': {
             const parsed = HistorialBaseInputSchema.parse(toolArgs);
             return rpcResult(await handleHistorialBase(parsed));
+          }
+
+          case 'pagos_facturacion': {
+            const parsed = PagosFacturacionInputSchema.parse(toolArgs);
+            return rpcResult(await handlePagosFacturacion(parsed));
           }
 
           default:

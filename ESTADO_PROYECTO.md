@@ -35,7 +35,7 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 | `encerar_cupos` | Pone en 0 los cupos de `notas_registros_cupos` (dos pasos, solo a pedido) | `src/mcp/tools/baseTool.ts` |
 
 - Código: 144 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
-- Último despliegue: workflow "Deploy to production" **#18** (PR #16, 19-nov, `main` = `3557e04`). `/health` = 200. CI en verde.
+- Último despliegue: workflow "Deploy to production" **#19** (24-nov, PR #17 solo documentación, `main` = `383873f`; el último con cambios de código fue el #18, `historial_base`). `/health` = 200. CI en verde.
 - Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
 - SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
 - Conector de ChatGPT funcionando (se corrigió el metadato `/.well-known/oauth-protected-resource/mcp` y se permitieron sus URL de retorno `https://chatgpt.com/connector/oauth/<id>`).

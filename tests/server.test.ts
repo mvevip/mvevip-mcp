@@ -131,6 +131,22 @@ test('flujo completo: usuario + contraseña + código por correo + PKCE + uso en
   const list = await (await rpc(token, { jsonrpc: '2.0', id: 2, method: 'tools/list' })).json();
   assert.deepEqual(list.result.tools.map((t: any) => t.name), ['reporte_ventas_mes', 'cuadro_ventas', 'requerimientos', 'validar_cruce_ventas', 'asistencia', 'encontrar_contacto', 'buscar_base', 'aplicar_base', 'encerar_cupos', 'asignar_base_usuario', 'encerar_cupo_usuario', 'historial_base', 'pagos_facturacion', 'encontrar_cliente']);
 
+  // Anotaciones: las de consulta se declaran de solo lectura y las que escriben, no (para que el cliente no pida permiso de más)
+  const escritura = ['aplicar_base', 'encerar_cupos', 'asignar_base_usuario', 'encerar_cupo_usuario'];
+  for (const t of list.result.tools) {
+    assert.ok(t.annotations, `${t.name} sin anotaciones`);
+    if (escritura.includes(t.name)) {
+      assert.deepEqual([t.annotations.readOnlyHint, t.annotations.destructiveHint], [false, true], t.name);
+    } else {
+      assert.deepEqual([t.annotations.readOnlyHint, t.annotations.destructiveHint, t.annotations.openWorldHint], [true, false, false], t.name);
+    }
+  }
+  const lote = list.result.tools.filter((t: any) => ['encontrar_cliente', 'encontrar_contacto'].includes(t.name));
+  for (const t of lote) {
+    assert.equal(t.inputSchema.properties.valores.maxItems, 100, t.name);
+    assert.equal(t.inputSchema.required, undefined, t.name);
+  }
+
   assert.equal((await rpc(token, { jsonrpc: '2.0', method: 'notifications/initialized' })).status, 202);
 });
 

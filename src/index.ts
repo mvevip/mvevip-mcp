@@ -593,15 +593,15 @@ const MCP_TOOLS: McpToolDefinition[] = [
   },
   {
     name: 'encontrar_contacto',
-    description: 'SOLO LECTURA. Busca contactos (notas_registros) por documento, nombres, teléfono, correo o nombre del asesor asignado y devuelve TODOS los registros que coincidan (puede ser uno o varios; el mismo teléfono puede estar en varias bases): id_lista, banco, identificador, identificadorOriginal, documento, nombres, teléfono, correo, asesor, fecha de alta, fecha del último contacto, fecha de asignación y estado, del más reciente al más antiguo. La búsqueda es "contiene" (mínimo 3 caracteres). Use "campo" para buscar solo en uno (documento, nombres, telefono, correo o asesor); si no se indica busca en los cinco. En nombres y asesor basta con que aparezcan todas las palabras, en cualquier orden. Por defecto devuelve hasta 50 contactos (limite hasta 200) e indica si hay más. Ejemplos: "busca el contacto con teléfono 0958978745", "quién es el documento 1719708677", "contactos del asesor Samantha", "busca el correo calolomino@gmail.com".',
+    description: 'SOLO LECTURA. Busca contactos (notas_registros) por documento, nombres, teléfono, correo o nombre del asesor asignado y devuelve TODOS los registros que coincidan (puede ser uno o varios; el mismo teléfono puede estar en varias bases): id_lista, banco, identificador, identificadorOriginal, documento, nombres, teléfono, correo, asesor, fecha de alta, fecha del último contacto, fecha de asignación y estado, del más reciente al más antiguo. La búsqueda es "contiene" (mínimo 3 caracteres). Use "campo" para buscar solo en uno (documento, nombres, telefono, correo o asesor); si no se indica busca en los cinco. En nombres y asesor basta con que aparezcan todas las palabras, en cualquier orden. Por defecto devuelve hasta 50 contactos (limite hasta 200) e indica si hay más. Ejemplos: "busca el contacto con teléfono 0958978745", "quién es el documento 1719708677", "contactos del asesor Samantha", "busca el correo calolomino@gmail.com". PARA VARIOS DATOS A LA VEZ use valores (hasta 100 cédulas, celulares, correos o nombres en una sola llamada, coincidencia exacta): devuelve una entrada por cada valor con sus contactos o "no encontrado", sin tener que llamar una vez por dato.',
     inputSchema: {
       type: 'object',
       properties: {
-        texto: { type: 'string', description: 'Texto a buscar (mínimo 3 caracteres): parte del documento, nombre, teléfono, correo o asesor.' },
-        campo: { type: 'string', enum: ['todos', 'documento', 'nombres', 'telefono', 'correo', 'asesor'], description: "Dónde buscar. Por defecto 'todos' (los cinco campos). Es más rápido y preciso indicar el campo." },
-        limite: { type: 'integer', minimum: 1, maximum: 200, description: 'Máximo de contactos a devolver (por defecto 50, máximo 200).' }
-      },
-      required: ['texto']
+        texto: { type: 'string', description: 'UN dato a buscar (mínimo 3 caracteres): parte del documento, nombre, teléfono, correo o asesor. No usar junto con valores.' },
+        valores: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 100, description: 'UNA LISTA de hasta 100 datos (cédulas, celulares, correos o nombres) para buscarlos todos en una sola llamada, con coincidencia exacta. Teléfonos: sin importar 0 inicial, +593, espacios ni símbolos. Con campo todos (por defecto) cada valor se busca como documento, teléfono o correo (un valor con @ solo como correo). No usar junto con texto.' },
+        campo: { type: 'string', enum: ['todos', 'documento', 'nombres', 'telefono', 'correo', 'asesor'], description: "Dónde buscar. Por defecto 'todos'. Con texto: los cinco campos (más rápido indicar el campo). Con valores: documento, teléfono y correo (nombres solo con campo nombres, máx. 20 nombres; asesor no aplica a listas)." },
+        limite: { type: 'integer', minimum: 1, maximum: 200, description: 'Solo con texto: máximo de contactos a devolver (por defecto 50, máximo 200).' }
+      }
     }
   },
   {
@@ -714,19 +714,29 @@ const MCP_TOOLS: McpToolDefinition[] = [
   },
   {
     name: 'encontrar_cliente',
-    description: 'SOLO LECTURA. Busca clientes (mve_clientes) por documento (cédula, RUC o pasaporte), nombres y apellidos, teléfono (celular, teléfono 1 o teléfono 2) o correo, y devuelve TODOS los clientes que coincidan: id_cliente (el mismo id_cliente de las ventas y abonos), nombres, apellidos, tipo y número de documento, correo, celular, teléfonos, ciudad, vendedor asignado y fecha de ingreso. El teléfono se busca solo por dígitos, sin importar espacios, símbolos ni el 0 inicial ni +593. Los nombres se buscan con todas las palabras en cualquier orden entre nombre y apellido. Si el documento está repetido en más de un cliente lo indica (clientes_con_mismo_documento). Úsela para "¿qué cliente es este correo, celular o cédula?", "busca al cliente Carlos Mino" o "dame el id del cliente con documento X". Distinta de encontrar_contacto, que busca contactos de las bases de llamadas (notas_registros).',
+    description: 'SOLO LECTURA. Busca clientes (mve_clientes) por documento (cédula, RUC o pasaporte), nombres y apellidos, teléfono (celular, teléfono 1 o teléfono 2) o correo, y devuelve TODOS los clientes que coincidan: id_cliente (el mismo id_cliente de las ventas y abonos), nombres, apellidos, tipo y número de documento, correo, celular, teléfonos, ciudad, vendedor asignado y fecha de ingreso. El teléfono se busca solo por dígitos, sin importar espacios, símbolos ni el 0 inicial ni +593. Los nombres se buscan con todas las palabras en cualquier orden entre nombre y apellido. Si el documento está repetido en más de un cliente lo indica (clientes_con_mismo_documento). Úsela para "¿qué cliente es este correo, celular o cédula?", "busca al cliente Carlos Mino" o "dame el id del cliente con documento X". Distinta de encontrar_contacto, que busca contactos de las bases de llamadas (notas_registros). PARA VARIOS DATOS A LA VEZ use valores (hasta 100 cédulas, celulares, correos o nombres en una sola llamada, coincidencia exacta): devuelve una entrada por cada valor con sus clientes (y por qué campo coincidió) o "no encontrado", sin tener que llamar una vez por dato.',
     inputSchema: {
       type: 'object',
       properties: {
-        texto: { type: 'string', description: 'Texto a buscar (mínimo 3 caracteres): parte del documento, nombre y apellido, teléfono o correo.' },
-        campo: { type: 'string', enum: ['todos', 'documento', 'nombres', 'telefono', 'correo'], description: "Dónde buscar. Por defecto 'todos'. Es más rápido y preciso indicar el campo. 'telefono' busca en celular, teléfono 1 y teléfono 2." },
-        limite: { type: 'integer', minimum: 1, maximum: 200, description: 'Máximo de clientes a devolver (por defecto 50, máximo 200).' }
-      },
-      required: ['texto']
+        texto: { type: 'string', description: 'UN dato a buscar (mínimo 3 caracteres): parte del documento, nombre y apellido, teléfono o correo. No usar junto con valores.' },
+        valores: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 100, description: 'UNA LISTA de hasta 100 datos (cédulas, celulares, correos o nombres) para buscarlos todos en una sola llamada, con coincidencia exacta. Teléfonos: sin importar 0 inicial, +593, espacios ni símbolos. Con campo todos (por defecto) cada valor se busca como documento, teléfono (celular, teléfono 1 y 2) o correo (un valor con @ solo como correo). No usar junto con texto.' },
+        campo: { type: 'string', enum: ['todos', 'documento', 'nombres', 'telefono', 'correo'], description: "Dónde buscar. Por defecto 'todos'. Es más rápido y preciso indicar el campo. 'telefono' busca en celular, teléfono 1 y teléfono 2. Con valores: documento, teléfono y correo exactos (nombres solo con campo nombres, máx. 20 nombres)." },
+        limite: { type: 'integer', minimum: 1, maximum: 200, description: 'Solo con texto: máximo de clientes a devolver (por defecto 50, máximo 200).' }
+      }
     }
   }
 ];
 
+
+/**
+ * Anotaciones MCP: le dicen al cliente (Claude, ChatGPT) qué herramientas solo leen. Las de escritura trabajan en dos pasos
+ * (vista previa y confirmación con código) y se declaran como no de solo lectura y destructivas para que sigan pidiendo permiso.
+ */
+export const WRITE_TOOLS: readonly string[] = ['aplicar_base', 'encerar_cupos', 'asignar_base_usuario', 'encerar_cupo_usuario'];
+export const toolAnnotations = (name: string) =>
+  WRITE_TOOLS.includes(name)
+    ? { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false }
+    : { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
 
 // ---------------------------------------------------------------------------
 // 6. Endpoint Stateless MCP JSON-RPC (/mcp)
@@ -773,7 +783,7 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
         return rpcResult({});
 
       case 'tools/list':
-        return rpcResult({ tools: MCP_TOOLS });
+        return rpcResult({ tools: MCP_TOOLS.map((t) => ({ ...t, annotations: toolAnnotations(t.name) })) });
 
       case 'tools/call': {
         const toolName = params?.name;

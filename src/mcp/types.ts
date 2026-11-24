@@ -23,9 +23,18 @@ export interface ToolResult {
   isError?: boolean;
 }
 
+export interface McpToolAnnotations {
+  title?: string;
+  readOnlyHint?: boolean;
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+}
+
 export interface McpToolDefinition {
   name: string;
   description: string;
+  annotations?: McpToolAnnotations;
   inputSchema: {
     type: 'object';
     properties: Record<string, any>;
@@ -106,10 +115,11 @@ export const AplicarBaseInputSchema = z.object({ ...BaseShape, codigo_confirmaci
 export const EncerarCuposInputSchema = z.object({ codigo_confirmacion: z.string().min(10).max(80).optional() });
 
 export const EncontrarContactoInputSchema = z.object({
-  texto: z.string().min(1).max(80),
+  texto: z.string().min(1).max(80).optional(),
+  valores: z.array(z.string().max(80)).min(1).max(100).optional(),
   campo: z.enum(['todos', 'documento', 'nombres', 'telefono', 'correo', 'asesor']).optional(),
   limite: z.number().int().min(1).max(200).optional(),
-});
+}).refine((d) => (d.texto === undefined) !== (d.valores === undefined), { message: 'Indique texto (un solo dato) o valores (una lista de hasta 100), no ambos.' });
 
 const UsuarioRef = z.union([z.string().min(1).max(80), z.number().int().positive()]);
 export const AsignarBaseUsuarioInputSchema = z.object({
@@ -154,7 +164,8 @@ export const PagosFacturacionInputSchema = z.object({
 });
 
 export const EncontrarClienteInputSchema = z.object({
-  texto: z.string().min(1).max(80),
+  texto: z.string().min(1).max(80).optional(),
+  valores: z.array(z.string().max(80)).min(1).max(100).optional(),
   campo: z.enum(['todos', 'documento', 'nombres', 'telefono', 'correo']).optional(),
   limite: z.number().int().min(1).max(200).optional(),
-});
+}).refine((d) => (d.texto === undefined) !== (d.valores === undefined), { message: 'Indique texto (un solo dato) o valores (una lista de hasta 100), no ambos.' });

@@ -1,4 +1,4 @@
-# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 19-nov-2026)
+# ESTADO DEL PROYECTO — mvevip-mcp (actualizado 24-nov-2026)
 
 Servidor MCP remoto (TypeScript/Express/MySQL) para que Claude y ChatGPT consulten reportes de MVEVIP (ventas, cuadro de ventas,
 requerimientos, asistencia, validación de cruces de ventas y liberación de base). Solo lo usan administradores de la empresa con correo `@mvevip.com`.
@@ -47,20 +47,16 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
    Claude escribe la herramienta con pruebas (incluida una que reproduce cifras reales de la pantalla del usuario) → PR → merge → deploy → el usuario prueba en el chat y compara cifras.
 4. Se eliminaron las herramientas genéricas (`test_db_connection`, `describe_database`, `get_table_schema`, `query_database_sample`) para que no haya SQL libre.
 
-## PENDIENTES (todo cerrado; se reabre solo si el usuario lo pide)
-1. Las 8 primeras herramientas (`reporte_ventas_mes`, `cuadro_ventas`, `requerimientos`, `asistencia`, `validar_cruce_ventas`, `buscar_base`, `aplicar_base`, `encerar_cupos`) están desplegadas, usadas por el usuario sin problemas y **cerradas**. Las 4 nuevas (`encontrar_contacto`, `asignar_base_usuario`, `encerar_cupo_usuario`, `historial_base`) están desplegadas y **pendientes de la prueba del usuario en el chat** (ver SIGUIENTE PASO).
-2. Servicio `asterisk-gateway` en Server Docker: operativo; el reinicio del sistema (kernel) ya se hizo. El certificado de `bases.mvevip.com` vence el 8-feb-2027 (renovación automática con certbot).
-3. **Seguridad: aplazada**, se resuelve en otro proyecto (RDS público, permisos de `mcp_ro`, `GRANT` de `punch`).
-4. **Funciones futuras: ninguna por ahora.** Ideas guardadas para cuando el usuario las pida: `asistencia` (horas trabajadas, feriados, ausentes) y `cuadro_ventas` (rutas del PHP no incluidas, descuento de requerimientos, uso del campo `estado`).
+## PENDIENTES (se reabren solo si el usuario lo pide)
+1. Las 12 herramientas están desplegadas, probadas por el usuario en el chat (24-nov: las 4 nuevas funcionan bien) y **cerradas**.
+2. **Fecha a vigilar:** el certificado de `bases.mvevip.com` (servicio `asterisk-gateway` en Server Docker) vence el **8-feb-2027**; se renueva solo con certbot, pero hay que comprobar que lo hizo.
+3. **Seguridad: va en otro proyecto** (RDS público, permisos de `mcp_ro`, `GRANT` de `punch`) y también el historial de `asignar_base_usuario` / `encerar_cupo_usuario`. No tocar aquí.
+4. **Ideas futuras, aparte (no pendientes):** `asistencia` (horas trabajadas, feriados, ausentes) y `cuadro_ventas` (rutas del PHP no incluidas, descuento de requerimientos, uso del campo `estado`).
 5. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
-6. Mantenimiento de ramas hecho el 19-nov (borradas por el usuario desde GitHub y verificado): en el remoto solo quedan `main` y la rama de trabajo.
+6. Ramas: en el remoto solo quedan `main` y la rama de trabajo (revisado el 24-nov).
 
 ## HISTORIAL DE LIBERACIONES: `historial_base` (desplegado el 19-nov: PR #16, despliegue #18)
 `aplicar_base` registra cada liberación (lote en `mcp_base_lotes` y estado anterior de cada contacto en `mcp_base_historial`, en la misma transacción) y `historial_base` la consulta por contacto o por lote. Reglas en `MEMORIA.md` sección 4; DDL en `db/historial_base.sql`. No registra `asignar_base_usuario`, `encerar_cupo_usuario`, liberaciones anteriores ni las hechas a mano.
 
 ## SIGUIENTE PASO (para retomar)
-Todo el código está en `main` y desplegado (despliegue #18); no hay PR abiertos ni trabajo a medias. El usuario prueba en el chat (quitar y volver a agregar el conector para refrescar la lista de herramientas) y reporta lo que no cuadre:
-1. `encontrar_contacto`: buscar por teléfono (p. ej. `0958978745` debe dar 2 registros: LEADS y MIS CONTACTOS) y por documento.
-2. `asignar_base_usuario`: vista previa con un asesor de prueba (p. ej. VENDEDOR 21) y un identificador real, revisar cupo actual / entregado / nuevo y confirmar; luego `encerar_cupo_usuario` de ese asesor.
-3. `aplicar_base` con una liberación pequeña y luego `historial_base` por uno de esos contactos o por el `id_lote`.
-Si algo falla: revisar el error en el chat y los logs de CloudWatch (`[AUDIT]` para las escrituras). Fuera de eso: esperar indicaciones del usuario (nuevas herramientas con el flujo de `MEMORIA.md` sección 5, ajustes, usuarios nuevos del MCP; la seguridad queda en otro proyecto; el historial de `asignar_base_usuario` / `encerar_cupo_usuario` quedó para después).
+Todo está en `main` y desplegado; no hay PR abiertos ni trabajo a medias. Esperar las indicaciones del usuario para **nuevas herramientas** (flujo de `MEMORIA.md` sección 5: consulta o PHP de referencia → verificaciones y `GRANT` → herramienta + pruebas → desplegar tras los `GRANT`).

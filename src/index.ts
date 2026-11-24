@@ -31,6 +31,7 @@ import {
   EncerarCupoUsuarioInputSchema,
   HistorialBaseInputSchema,
   PagosFacturacionInputSchema,
+  EncontrarClienteInputSchema,
   AsistenciaInputSchema
 } from './mcp/types';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
@@ -40,6 +41,7 @@ import { handleBuscarBase, handleAplicarBase, handleEncerarCupos } from './mcp/t
 import { handleAsignarBaseUsuario, handleEncerarCupoUsuario } from './mcp/tools/cuposTool';
 import { handleHistorialBase } from './mcp/tools/historialBaseTool';
 import { handlePagosFacturacion } from './mcp/tools/pagosFacturacionTool';
+import { handleEncontrarCliente } from './mcp/tools/clienteTool';
 import { handleCruceVentas } from './mcp/tools/cruceVentasTool';
 import { handleAsistencia } from './mcp/tools/asistenciaTool';
 import { handleEncontrarContacto } from './mcp/tools/contactoTool';
@@ -709,6 +711,19 @@ const MCP_TOOLS: McpToolDefinition[] = [
         comparar_anio_anterior: { type: 'boolean', description: 'Si es true agrega el mismo período del año anterior y la variación (por grupo al agrupar).' }
       }
     }
+  },
+  {
+    name: 'encontrar_cliente',
+    description: 'SOLO LECTURA. Busca clientes (mve_clientes) por documento (cédula, RUC o pasaporte), nombres y apellidos, teléfono (celular, teléfono 1 o teléfono 2) o correo, y devuelve TODOS los clientes que coincidan: id_cliente (el mismo id_cliente de las ventas y abonos), nombres, apellidos, tipo y número de documento, correo, celular, teléfonos, ciudad, vendedor asignado y fecha de ingreso. El teléfono se busca solo por dígitos, sin importar espacios, símbolos ni el 0 inicial ni +593. Los nombres se buscan con todas las palabras en cualquier orden entre nombre y apellido. Si el documento está repetido en más de un cliente lo indica (clientes_con_mismo_documento). Úsela para "¿qué cliente es este correo, celular o cédula?", "busca al cliente Carlos Mino" o "dame el id del cliente con documento X". Distinta de encontrar_contacto, que busca contactos de las bases de llamadas (notas_registros).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        texto: { type: 'string', description: 'Texto a buscar (mínimo 3 caracteres): parte del documento, nombre y apellido, teléfono o correo.' },
+        campo: { type: 'string', enum: ['todos', 'documento', 'nombres', 'telefono', 'correo'], description: "Dónde buscar. Por defecto 'todos'. Es más rápido y preciso indicar el campo. 'telefono' busca en celular, teléfono 1 y teléfono 2." },
+        limite: { type: 'integer', minimum: 1, maximum: 200, description: 'Máximo de clientes a devolver (por defecto 50, máximo 200).' }
+      },
+      required: ['texto']
+    }
   }
 ];
 
@@ -829,6 +844,11 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'pagos_facturacion': {
             const parsed = PagosFacturacionInputSchema.parse(toolArgs);
             return rpcResult(await handlePagosFacturacion(parsed));
+          }
+
+          case 'encontrar_cliente': {
+            const parsed = EncontrarClienteInputSchema.parse(toolArgs);
+            return rpcResult(await handleEncontrarCliente(parsed));
           }
 
           default:

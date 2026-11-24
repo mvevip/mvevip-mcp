@@ -37,7 +37,7 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 | `encerar_cupos` | Pone en 0 los cupos de `notas_registros_cupos` (dos pasos, solo a pedido) | `src/mcp/tools/baseTool.ts` |
 
 - Código: 157 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
-- Último despliegue: workflow "Deploy to production" **#22** (24-nov, PR #20 `encontrar_cliente`, `main` = `8070fa4`). `/health` = 200, Lambda actualizada. CI en verde.
+- Último despliegue: workflow "Deploy to production" **#23** (24-nov, PR #21 búsqueda por lista y anotaciones de solo lectura, `main` = `92f9db3`). `/health` = 200, Lambda actualizada. CI en verde.
 - Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
 - SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
 - Conector de ChatGPT funcionando (se corrigió el metadato `/.well-known/oauth-protected-resource/mcp` y se permitieron sus URL de retorno `https://chatgpt.com/connector/oauth/<id>`).
@@ -67,8 +67,8 @@ Abonos facturados (concepto, forma de pago, origen, destino, usuario) y, en `vis
 ## EN PRUEBA: `encontrar_cliente` (desplegada el 24-nov, despliegue #22)
 Busca clientes de `mve.mve_clientes` (53 894) por documento, nombres y apellidos, teléfono (por dígitos, en celular y teléfonos 1 y 2) o correo, con `id_cliente` (= `cli_codigo`), ciudad, vendedor y aviso de documentos repetidos (hay 1 498 repetidos en 3 382 clientes). Detalle en `MEMORIA.md` sección 4. `GRANT` de clientes aplicado (`cli_estado` revocado). 176 pruebas, typecheck, paquete y `npm audit` en 0.
 
-## EN CURSO: búsqueda por lista y anotaciones de solo lectura (código listo en la rama de trabajo, SIN desplegar)
+## EN PRUEBA: búsqueda por lista y anotaciones de solo lectura (desplegadas el 24-nov, despliegue #23)
 `encontrar_cliente` y `encontrar_contacto` aceptan `valores` (hasta 100 cédulas, celulares, correos o nombres en una sola llamada, coincidencia exacta; una entrada por valor, con los no encontrados), y `tools/list` declara las herramientas de consulta como de solo lectura (y las 4 que escriben como no de solo lectura) para reducir las confirmaciones de Claude. Detalle en `MEMORIA.md` secciones 1 y 4. Sin `GRANT` nuevo. 185 pruebas, typecheck, paquete y `npm audit` en 0.
 
 ## SIGUIENTE PASO (para retomar)
-"crea el PR y despliega" (PR → merge → "Deploy to production" `ref=main` → `/health`). Después el usuario prueba en el chat (quitar y volver a agregar el conector): pegar una lista de unos 50 datos mezclados (cédulas y celulares) en `encontrar_cliente` y comprobar que sale en una sola llamada con los no encontrados, y ver si Claude deja de pedir confirmación en las herramientas de consulta. Pendientes en espera, sin tocar: resultados de la prueba de `pagos_facturacion` por otra persona, `saldo_cliente` (punto 7 de PENDIENTES) y el análisis de tarjetas (`MEMORIA.md` sección 4).
+El usuario prueba en el chat (quitar y volver a agregar el conector): pegar una lista de unos 50 datos mezclados (cédulas y celulares) en `encontrar_cliente` y en `encontrar_contacto`, comprobar que sale en una sola llamada con los no encontrados, y ver si Claude deja de pedir confirmación en las herramientas de consulta (si sigue pidiéndola, la causa es del cliente, no del servidor). Pendientes en espera, sin tocar: resultados de la prueba de `pagos_facturacion` por otra persona, `saldo_cliente` (punto 7 de PENDIENTES) y el análisis de tarjetas (`MEMORIA.md` sección 4).

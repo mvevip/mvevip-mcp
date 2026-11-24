@@ -16,7 +16,7 @@ requerimientos, asistencia, validación de cruces de ventas y liberación de bas
 - Los secretos y contraseñas **no** se guardan en el repo. Las contraseñas generadas de usuarios se entregan una sola vez en el chat y el usuario las guarda en su gestor.
 - Rama de trabajo de la sesión actual: `claude/intelligent-ritchie-gngbib`. Las ramas anteriores (todas fusionadas) se borraron el 19-nov (tras cada PR fusionado se reinicia desde `origin/main` con `git checkout -B ... origin/main` y `git push --force-with-lease`).
 
-## Estado actual (todo desplegado en producción, 13 herramientas)
+## Estado actual (todo desplegado en producción, 14 herramientas)
 Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos pasos con código de confirmación):
 
 | Herramienta | Qué da | Archivo |
@@ -31,13 +31,13 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 | `encerar_cupo_usuario` | Pone cupo 0 solo a los asesores indicados (todas sus bases o una); dos pasos | `src/mcp/tools/cuposTool.ts` |
 | `historial_base` | Solo lectura: historial de liberaciones de `aplicar_base` por contacto (id_lista, teléfono o documento) o por lote/fecha/banco | `src/mcp/tools/historialBaseTool.ts` |
 | `pagos_facturacion` | Solo lectura: abonos facturados (estado 5 y 6) por concepto contable, forma de pago, origen, destino o usuario; por fecha de venta, factura o abono; con comparativo del año anterior (**desplegada el 24-nov, despliegue #20; pendiente de prueba del usuario**) | `src/mcp/tools/pagosFacturacionTool.ts` |
-| `encontrar_cliente` | Solo lectura: busca clientes de `mve_clientes` por documento, nombres y apellidos, teléfono (celular, teléfono 1 y 2) o correo; marca documentos repetidos (**código listo, sin desplegar**) | `src/mcp/tools/clienteTool.ts` |
+| `encontrar_cliente` | Solo lectura: busca clientes de `mve_clientes` por documento, nombres y apellidos, teléfono (celular, teléfono 1 y 2) o correo; marca documentos repetidos (**desplegada el 24-nov, despliegue #22; pendiente de prueba del usuario**) | `src/mcp/tools/clienteTool.ts` |
 | `buscar_base` | Solo lectura: contactos de `notas_registros` sin llamadas (cruce con Asterisk) y vista previa con código de confirmación | `src/mcp/tools/baseTool.ts` |
 | `aplicar_base` | Libera la base de `buscar_base` (normal o predictivo) en una transacción, solo si el código coincide | `src/mcp/tools/baseTool.ts` |
 | `encerar_cupos` | Pone en 0 los cupos de `notas_registros_cupos` (dos pasos, solo a pedido) | `src/mcp/tools/baseTool.ts` |
 
 - Código: 157 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
-- Último despliegue: workflow "Deploy to production" **#21** (24-nov, PR #19 `pagos_facturacion` con `vista=pendiente`, `main` = `c39125a`). `/health` = 200, Lambda actualizada. CI en verde.
+- Último despliegue: workflow "Deploy to production" **#22** (24-nov, PR #20 `encontrar_cliente`, `main` = `8070fa4`). `/health` = 200, Lambda actualizada. CI en verde.
 - Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
 - SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
 - Conector de ChatGPT funcionando (se corrigió el metadato `/.well-known/oauth-protected-resource/mcp` y se permitieron sus URL de retorno `https://chatgpt.com/connector/oauth/<id>`).
@@ -64,8 +64,8 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 ## EN PRUEBA: `pagos_facturacion` y su `vista=pendiente` (desplegadas el 24-nov, despliegues #20 y #21)
 Abonos facturados (concepto, forma de pago, origen, destino, usuario) y, en `vista=pendiente`, lo que falta por facturar (abonos en estado 1 y 2 y pagos de ventas sin abono), separado de lo facturado y sin total combinado. Detalle en `MEMORIA.md` sección 4. 164 pruebas, typecheck, paquete y `npm audit` en 0.
 
-## EN CURSO: `encontrar_cliente` (código listo en la rama de trabajo, SIN desplegar)
-Busca clientes de `mve.mve_clientes` (53 894) por documento, nombres y apellidos, teléfono (por dígitos, en celular y teléfonos 1 y 2) o correo, con `id_cliente` (= `cli_codigo`), ciudad, vendedor y aviso de documentos repetidos (hay 1 498 repetidos en 3 382 clientes). Detalle en `MEMORIA.md` sección 4. El `GRANT` de clientes está aplicado (`cli_estado` se concedió por error y ya se revocó). 176 pruebas, typecheck, paquete y `npm audit` en 0.
+## EN PRUEBA: `encontrar_cliente` (desplegada el 24-nov, despliegue #22)
+Busca clientes de `mve.mve_clientes` (53 894) por documento, nombres y apellidos, teléfono (por dígitos, en celular y teléfonos 1 y 2) o correo, con `id_cliente` (= `cli_codigo`), ciudad, vendedor y aviso de documentos repetidos (hay 1 498 repetidos en 3 382 clientes). Detalle en `MEMORIA.md` sección 4. `GRANT` de clientes aplicado (`cli_estado` revocado). 176 pruebas, typecheck, paquete y `npm audit` en 0.
 
 ## SIGUIENTE PASO (para retomar)
-"crea el PR y despliega" para `encontrar_cliente` (PR → merge → "Deploy to production" `ref=main` → `/health`); después el usuario prueba en el chat (quitar y volver a agregar el conector): buscar por celular con y sin 0 inicial, por cédula, por correo y por nombre en cualquier orden. Pendientes en espera, sin tocar: resultados de la prueba de `pagos_facturacion` por otra persona, `saldo_cliente` (punto 7 de PENDIENTES) y el análisis de tarjetas (`MEMORIA.md` sección 4; falta el PHP del Flujo de Caja y saber qué se quiere hacer).
+El usuario prueba `encontrar_cliente` en el chat (quitar y volver a agregar el conector): buscar por celular con y sin 0 inicial, por cédula, por correo y por nombre en cualquier orden, y un documento repetido para ver el aviso. Pendientes en espera, sin tocar: resultados de la prueba de `pagos_facturacion` por otra persona, `saldo_cliente` (punto 7 de PENDIENTES) y el análisis de tarjetas (`MEMORIA.md` sección 4; falta el PHP del Flujo de Caja y saber qué se quiere hacer).

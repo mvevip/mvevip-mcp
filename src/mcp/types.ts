@@ -139,3 +139,15 @@ export const HistorialBaseInputSchema = z.object({
   banco: z.number().int().min(1).max(100000).optional(),
   limite: z.number().int().min(1).max(300).optional(),
 });
+
+export const PagosFacturacionInputSchema = z.object({
+  mes: z.number().int().min(1).max(12).optional(),
+  anio: z.number().int().min(2000).max(2100).optional(),
+  fecha_desde: IsoDate.optional(),
+  fecha_hasta: IsoDate.optional(),
+  fecha_base: z.enum(['venta', 'factura', 'abono']).optional(),
+  agrupar_por: z.enum(['ninguno', 'concepto', 'forma_pago', 'tipo_pago', 'origen', 'destino', 'usuario', 'mes_factura', 'dia_factura']).optional(),
+  ordenar_por: z.string().max(40).optional(),
+  direccion: z.enum(['asc', 'desc']).optional(),
+  comparar_anio_anterior: z.boolean().optional(),
+});

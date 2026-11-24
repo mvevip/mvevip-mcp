@@ -49,21 +49,19 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 4. Se eliminaron las herramientas genéricas (`test_db_connection`, `describe_database`, `get_table_schema`, `query_database_sample`) para que no haya SQL libre.
 
 ## PENDIENTES (se reabren solo si el usuario lo pide)
-1. Las 12 herramientas están desplegadas, probadas por el usuario en el chat (24-nov: las 4 nuevas funcionan bien) y **cerradas**.
+1. Las 12 primeras herramientas están desplegadas, probadas y **cerradas**. La 13.ª, `pagos_facturacion` (con `vista=pendiente`), está desplegada y **en prueba por otra persona**; el usuario traerá sus resultados.
 2. **Fecha a vigilar:** el certificado de `bases.mvevip.com` (servicio `asterisk-gateway` en Server Docker) vence el **8-feb-2027**; se renueva solo con certbot, pero hay que comprobar que lo hizo.
 3. **Seguridad: va en otro proyecto** (RDS público, permisos de `mcp_ro`, `GRANT` de `punch`) y también el historial de `asignar_base_usuario` / `encerar_cupo_usuario`. No tocar aquí.
 4. **Ideas futuras, aparte (no pendientes):** `asistencia` (horas trabajadas, feriados, ausentes) y `cuadro_ventas` (rutas del PHP no incluidas, descuento de requerimientos, uso del campo `estado`).
 5. **Operación:** usuarios actuales suficientes; se crean más solo cuando el usuario lo pida (comando en `docs/DEPLOY.md`, solo `@mvevip.com`). Para revocar todos los tokens, cambiar el secret `MCP_SIGNING_SECRET` y desplegar.
 6. Ramas: en el remoto solo quedan `main` y la rama de trabajo (revisado el 24-nov).
+7. **`saldo_cliente` (PENDIENTE, análisis hecho, sin código):** herramienta para saber si un ID de cliente tiene saldo pendiente en la empresa. El usuario la dejó en pausa el 24-nov para hacer otra más urgente. Todo lo analizado y la regla propuesta están en `MEMORIA.md` sección 4 («saldo_cliente»). Para retomar faltan las respuestas del usuario a: (a) si los saldos que da la regla en los 8 clientes de prueba coinciden con lo que él sabe, (b) qué pasó con el cliente 42758, (c) si basta con el saldo total sin separar vencido y por vencer (no hay fechas de vencimiento en los datos) y (d) si existe un PHP o reporte del CRM que muestre el saldo del cliente para compararlo.
 
 ## HISTORIAL DE LIBERACIONES: `historial_base` (desplegado el 19-nov: PR #16, despliegue #18)
 `aplicar_base` registra cada liberación (lote en `mcp_base_lotes` y estado anterior de cada contacto en `mcp_base_historial`, en la misma transacción) y `historial_base` la consulta por contacto o por lote. Reglas en `MEMORIA.md` sección 4; DDL en `db/historial_base.sql`. No registra `asignar_base_usuario`, `encerar_cupo_usuario`, liberaciones anteriores ni las hechas a mano.
-
-## EN PRUEBA: `pagos_facturacion` (desplegada el 24-nov, despliegue #20)
-Reporte de abonos facturados de `mve.mve_abonos` (no solo de ventas) con concepto (`cod_descripcion`), forma de pago (banco y tipo), origen, destino y usuario. Reglas y cifras reales en `MEMORIA.md` sección 4. El `GRANT` de facturación está aplicado. 157 pruebas, typecheck, paquete y `npm audit` en 0.
 
 ## EN PRUEBA: `pagos_facturacion` y su `vista=pendiente` (desplegadas el 24-nov, despliegues #20 y #21)
 Abonos facturados (concepto, forma de pago, origen, destino, usuario) y, en `vista=pendiente`, lo que falta por facturar (abonos en estado 1 y 2 y pagos de ventas sin abono), separado de lo facturado y sin total combinado. Detalle en `MEMORIA.md` sección 4. 164 pruebas, typecheck, paquete y `npm audit` en 0.
 
 ## SIGUIENTE PASO (para retomar)
-El usuario prueba `vista=pendiente` en el chat (quitar y volver a agregar el conector): noviembre debería mostrar unos 35 pagos sin abono por unos 27 808 (al 24-nov) y 2 pagos con abono autorizado por 150. Queda por revisar con el usuario los resultados de su primera prueba de `pagos_facturacion` (el archivo no llegó). Fuera de eso, esperar indicaciones para nuevas herramientas (flujo de `MEMORIA.md` sección 5).
+El usuario indicará una **herramienta nueva más urgente** (flujo de `MEMORIA.md` sección 5: consulta o PHP de referencia → verificaciones y `GRANT` por columna → herramienta + esquema Zod + despacho + pruebas → desplegar tras los `GRANT`). Pendientes en espera, sin tocar: resultados de la prueba de `pagos_facturacion` por otra persona (cifras de referencia en `MEMORIA.md`) y `saldo_cliente` (punto 7 de PENDIENTES). Rama de trabajo: `claude/awesome-clarke-ghscbn` (adelantada a `main` solo por commits de documentación; sin PR abierto).

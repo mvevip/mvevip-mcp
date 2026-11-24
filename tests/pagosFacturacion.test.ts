@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AGRUPAR_POR, FECHA_BASE, PagosFacturacionDeps, armarAvisos, armarTotales, buildPagosFacturacionQueries,
-  handlePagosFacturacion, shiftYears, unirComparativo
+  AGRUPAR_POR, AGRUPAR_POR_PENDIENTE, FECHA_BASE, PagosFacturacionDeps, armarAvisos, armarNoConsiderados, armarTotales,
+  buildPagosFacturacionQueries, buildPendienteQueries, handlePagosFacturacion, shiftYears, unirComparativo
 } from '../src/mcp/tools/pagosFacturacionTool';
 import { PagosFacturacionInputSchema } from '../src/mcp/types';
 import { validateReadOnlySql } from '../src/services/sqlGuard';
@@ -197,4 +197,111 @@ test('un parámetro inválido devuelve un error legible y no consulta la base', 
   assert.equal(r.isError, true);
   assert.match(r.content[0].text, /ordenar_por inválido/);
   assert.equal(llamadas, 0);
+});
+
+// ---------------------------------------------------------------------------
+// vista=pendiente (24-nov-2026): separada de lo facturado, solo estados 1 y 2, sin total combinado
+// ---------------------------------------------------------------------------
+test('vista pendiente: todas las combinaciones generan SQL de solo lectura válido', () => {
+  for (const fecha_base of ['venta', 'abono'] as const) {
+    for (const agrupar_por of AGRUPAR_POR_PENDIENTE) {
+      const q = buildPendienteQueries({ mes: 11, anio: 2026, vista: 'pendiente', fecha_base, agrupar_por }, NOW);
+      for (const sql of [q.abonosDetalleSql, q.abonosTotalesSql, q.noConsideradosSql, q.sinAbonoDetalleSql, q.sinAbonoTotalesSql]) {
+        assert.doesNotThrow(() => validateReadOnlySql(sql), `${fecha_base}/${agrupar_por}`);
+      }
+    }
+  }
+});
+
+test('vista pendiente: reglas en el SQL (estados 1 y 2, 3/4/7 aparte, sin abono, ventas anuladas fuera, fecha según la base)', () => {
+  const q = buildPendienteQueries({ mes: 11, anio: 2026, vista: 'pendiente' }, NOW);
+  assert.equal(q.hoy, '2026-11-24');
+  assert.equal(q.fechaBase, 'venta');
+  assert.equal(q.agrupar, 'ninguno');
+  assert.match(q.abonosDetalleSql, /A\.abo_estado IN \(1, 2\)/);
+  assert.doesNotMatch(q.abonosDetalleSql, /IN \(5, 6\)/);
+  assert.match(q.abonosDetalleSql, /V\.n_validas > 0/);
+  assert.match(q.abonosDetalleSql, /DATEDIFF\('2026-11-24', AB\.abo_fecha\) AS dias_pendiente/);
+  assert.match(q.noConsideradosSql, /A\.abo_estado IN \(3, 4, 7\)/);
+  assert.match(q.sinAbonoDetalleSql, /\(P\.idAbonoCRM IS NULL OR P\.idAbonoCRM = 0\) AND R\.estado NOT IN \(9, 13\)/);
+  assert.match(q.sinAbonoDetalleSql, /R\.fecha_venta >= '2026-11-01' AND R\.fecha_venta < '2026-12-01'/);
+  assert.match(q.abonosDetalleSql, /COALESCE\(V\.fecha_venta, A\.abo_fecha\) >= '2026-11-01'/);
+  // por fecha de abono: los pagos sin abono se ubican por su fecha de pago
+  const a = buildPendienteQueries({ mes: 11, anio: 2026, vista: 'pendiente', fecha_base: 'abono' }, NOW);
+  assert.match(a.abonosDetalleSql, /A\.abo_fecha >= '2026-11-01'/);
+  assert.match(a.sinAbonoDetalleSql, /P\.fecha_pago >= '2026-11-01' AND P\.fecha_pago < '2026-12-01'/);
+});
+
+test('vista pendiente: validaciones (factura no aplica, listas cerradas)', () => {
+  assert.throws(() => buildPendienteQueries({ vista: 'pendiente', fecha_base: 'factura' }, NOW), /no aplica a lo pendiente/);
+  assert.throws(() => buildPendienteQueries({ vista: 'pendiente', agrupar_por: 'mes_factura' }, NOW), /inválido para lo pendiente/);
+  assert.throws(() => buildPendienteQueries({ vista: 'pendiente', ordenar_por: 'x; DROP TABLE y' }, NOW), /ordenar_por inválido/);
+  assert.throws(() => buildPendienteQueries({ vista: 'pendiente', agrupar_por: 'usuario', ordenar_por: 'dias_pendiente' }, NOW), /ordenar_por inválido al agrupar/);
+  // y la vista facturada no acepta los desgloses propios de lo pendiente
+  assert.throws(() => buildPagosFacturacionQueries({ agrupar_por: 'antiguedad' }, NOW), /inválido para lo facturado/);
+  assert.doesNotThrow(() => PagosFacturacionInputSchema.parse({ vista: 'pendiente', agrupar_por: 'antiguedad' }));
+  assert.throws(() => PagosFacturacionInputSchema.parse({ vista: 'otra' }));
+});
+
+const pendienteDeps = (extra: Record<string, any[]> = {}): PagosFacturacionDeps => fakeDeps([
+  [/IN \(3, 4, 7\)/, extra.noCons ?? [{ estado: 3, abonos: 4, valor: '800.00' }, { estado: 4, abonos: 1, valor: '200.00' }]],
+  [/AS valor_ingresadas/, extra.aTot ?? [{ abonos: 2, valor: '150.00', ingresadas: 0, valor_ingresadas: '0.00', autorizadas: 2, valor_autorizadas: '150.00', abonos_ventas: 2, valor_ventas: '150.00', dias_maximo: 12 }]],
+  [/AS pagos_enlace_invalido/, extra.bTot ?? [{ pagos: 35, ventas: 31, valor_voucher: '27808.00', dias_maximo: 20, pagos_enlace_invalido: 10, valor_enlace_invalido: '38781.84' }]],
+  [/AS asesor/, extra.bDet ?? [{ id_pago: 40401, id_registro: 26060, fecha_venta: '2026-11-04', fecha_pago: '2026-11-04', dias_pendiente: 20, valor: '998.00', usuario: 'ANA PEREZ' }]],
+  [/FROM \(/, extra.aDet ?? [{ id_abono: 102340, fecha_abono: '2026-11-12', fecha_venta: '2026-11-12', estado: 'AUTORIZADA', dias_pendiente: 12, origen: 'VENTAS', valor: '100.00', forma_pago: 'VISA BANCO PICHINCHA', tipo_pago: 'TARJETA DE CREDITO', destino: 'EEUU:  ORLANDO', usuario: 'ANA PEREZ', conceptos: 'PAQUETE' }]]
+]);
+
+test('vista pendiente (noviembre 2026): abonos por facturar y pagos sin abono van separados, sin total combinado', async () => {
+  // Cifras de la verificación del usuario (24-nov): 35 pagos sin abono por 27 808 y 2 pagos con abono en estado 2 por 150 (voucher).
+  const p = payload(await handlePagosFacturacion({ mes: 11, anio: 2026, vista: 'pendiente' }, pendienteDeps(), NOW));
+  assert.equal(p.vista, 'pendiente');
+  assert.equal(p.abonos_por_facturar.totales.abonos, 2);
+  assert.equal(p.abonos_por_facturar.totales.autorizadas.valor, 150);
+  assert.equal(p.abonos_por_facturar.totales.ingresadas.abonos, 0);
+  assert.equal(p.ventas_sin_abono.totales.pagos, 35);
+  assert.equal(p.ventas_sin_abono.totales.valor_voucher, 27808);
+  assert.equal(p.ventas_sin_abono.filas[0].usuario, 'ANA PEREZ');
+  assert.equal(p.abonos_por_facturar.filas[0].estado, 'AUTORIZADA');
+  assert.deepEqual(p.abonos_no_considerados, { no_autorizada: { abonos: 4, valor: 800 }, eliminada: { abonos: 1, valor: 200 }, venta_ticket_sin_fee: { abonos: 0, valor: 0 } });
+  // nada de totales combinados ni de lo facturado mezclado
+  const json = JSON.stringify(p);
+  assert.doesNotMatch(json, /total_pendiente|valor_facturado|total_combinado/);
+  assert.ok(p.avisos.some((a: string) => /no se suman/.test(a)));
+  assert.ok(p.avisos.some((a: string) => /Varios pagos pueden terminar en un solo abono/.test(a)));
+  assert.ok(p.avisos.some((a: string) => /10 pago\(s\).*38,781\.84.*abono 1/.test(a)));
+  assert.ok(p.avisos.some((a: string) => /no autorizada \(4\), eliminada \(1\) ni venta de ticket sin fee \(0\)/.test(a)));
+});
+
+test('vista pendiente agrupada: usa la misma agrupación en ambos grupos y calcula el porcentaje de cada uno', async () => {
+  const p = payload(await handlePagosFacturacion({ mes: 11, anio: 2026, vista: 'pendiente', agrupar_por: 'usuario' }, pendienteDeps({
+    aDet: [{ grupo: 'ANA PEREZ', abonos: 2, valor: '150.00' }],
+    bDet: [{ grupo: 'ANA PEREZ', pagos: 20, valor: '20000.00' }, { grupo: 'LUIS MORA', pagos: 15, valor: '7808.00' }]
+  }), NOW));
+  assert.equal(p.agrupado_por, 'usuario');
+  assert.deepEqual(p.abonos_por_facturar.filas, [{ grupo: 'ANA PEREZ', abonos: 2, valor: 150, porcentaje_del_valor: 100 }]);
+  assert.equal(p.ventas_sin_abono.filas[0].pagos, 20);
+  assert.equal(p.ventas_sin_abono.filas[0].porcentaje_del_valor, 71.9);
+  assert.equal(p.ventas_sin_abono.filas[1].porcentaje_del_valor, 28.1);
+});
+
+test('vista pendiente: sin pendientes lo dice; fecha_base=factura devuelve un error legible sin consultar', async () => {
+  const vacio = payload(await handlePagosFacturacion({ mes: 10, anio: 2026, vista: 'pendiente' }, pendienteDeps({
+    aTot: [{ abonos: 0, valor: '0.00' }], bTot: [{ pagos: 0, ventas: 0, valor_voucher: '0.00' }], noCons: [], aDet: [], bDet: []
+  }), NOW));
+  assert.ok(vacio.avisos.some((a: string) => /No hay nada pendiente/.test(a)));
+  assert.deepEqual(armarNoConsiderados([]), { no_autorizada: { abonos: 0, valor: 0 }, eliminada: { abonos: 0, valor: 0 }, venta_ticket_sin_fee: { abonos: 0, valor: 0 } });
+
+  let llamadas = 0;
+  const deps: PagosFacturacionDeps = { consultar: async () => { llamadas++; return { rows: [], truncated: false }; } };
+  const r = await handlePagosFacturacion({ vista: 'pendiente', fecha_base: 'factura' }, deps, NOW);
+  assert.equal(r.isError, true);
+  assert.match(r.content[0].text, /no aplica a lo pendiente/);
+  assert.equal(llamadas, 0);
+});
+
+test('la vista facturada no cambia y su bloque de pendientes apunta a vista=pendiente (solo estados 1 y 2)', () => {
+  const q = buildPagosFacturacionQueries({ mes: 11, anio: 2026, fecha_base: 'venta' }, NOW);
+  assert.match(q.pendientesSql!, /A\.abo_estado IN \(1, 2\)/);
+  assert.doesNotMatch(q.pendientesSql!, /NOT IN \(5, 6\)/);
+  assert.match(armarAvisos({}, 'concepto', { pagos_sin_abono: 1, valor_sin_abono: 10, pagos_abono_sin_facturar: 0, valor_abono_sin_facturar: 0 }).join(' '), /use vista=pendiente/);
 });

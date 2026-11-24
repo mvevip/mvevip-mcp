@@ -36,7 +36,7 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 | `encerar_cupos` | Pone en 0 los cupos de `notas_registros_cupos` (dos pasos, solo a pedido) | `src/mcp/tools/baseTool.ts` |
 
 - Código: 157 pruebas (`npm test`), typecheck, empaquetado Lambda y `npm audit` de producción en 0 vulnerabilidades (zod 4, body-parser y qs actualizados).
-- Último despliegue: workflow "Deploy to production" **#20** (24-nov, PR #18 `pagos_facturacion`, `main` = `9cf628e`). `/health` = 200, Lambda actualizada. CI en verde.
+- Último despliegue: workflow "Deploy to production" **#21** (24-nov, PR #19 `pagos_facturacion` con `vista=pendiente`, `main` = `c39125a`). `/health` = 200, Lambda actualizada. CI en verde.
 - Usuarios activos del MCP: `cmino`, `dproano`, `aveintimilla`, `amorales` (todos @mvevip.com; sin contraseñas en el repo).
 - SES sigue en sandbox y AWS **denegó** el acceso a producción (caso 179337882700292): no importa, el MCP solo envía códigos a direcciones `@mvevip.com` (dominio verificado con DKIM).
 - Conector de ChatGPT funcionando (se corrigió el metadato `/.well-known/oauth-protected-resource/mcp` y se permitieron sus URL de retorno `https://chatgpt.com/connector/oauth/<id>`).
@@ -62,8 +62,8 @@ Herramientas MCP (sin SQL libre desde el chat; solo las de base escriben, en dos
 ## EN PRUEBA: `pagos_facturacion` (desplegada el 24-nov, despliegue #20)
 Reporte de abonos facturados de `mve.mve_abonos` (no solo de ventas) con concepto (`cod_descripcion`), forma de pago (banco y tipo), origen, destino y usuario. Reglas y cifras reales en `MEMORIA.md` sección 4. El `GRANT` de facturación está aplicado. 157 pruebas, typecheck, paquete y `npm audit` en 0.
 
-## EN CURSO: `pagos_facturacion` con `vista=pendiente` (código listo en la rama de trabajo, SIN desplegar)
-Ajuste pedido el 24-nov tras probar la herramienta: lo pendiente de facturar (abonos en estado 1 y 2 y pagos de ventas sin abono) se muestra con detalle, separado de lo facturado y sin total combinado. Los estados 3, 4 y 7 no cuentan (solo contador aparte). Detalle en `MEMORIA.md` sección 4. Sin `GRANT` nuevo. 164 pruebas, typecheck, paquete y `npm audit` en 0.
+## EN PRUEBA: `pagos_facturacion` y su `vista=pendiente` (desplegadas el 24-nov, despliegues #20 y #21)
+Abonos facturados (concepto, forma de pago, origen, destino, usuario) y, en `vista=pendiente`, lo que falta por facturar (abonos en estado 1 y 2 y pagos de ventas sin abono), separado de lo facturado y sin total combinado. Detalle en `MEMORIA.md` sección 4. 164 pruebas, typecheck, paquete y `npm audit` en 0.
 
 ## SIGUIENTE PASO (para retomar)
-"crea el PR y despliega" (PR → merge → "Deploy to production" `ref=main` → `/health`). Después el usuario prueba en el chat (quitar y volver a agregar el conector): `vista=pendiente` del mes actual (cuáles faltan por facturar, con días pendientes) y comprueba que noviembre muestre unos 35 pagos sin abono por unos 27 808 (al 24-nov). Queda también por revisar con el usuario los resultados de su primera prueba de `pagos_facturacion` (el archivo no llegó). Fuera de eso, esperar indicaciones para nuevas herramientas.
+El usuario prueba `vista=pendiente` en el chat (quitar y volver a agregar el conector): noviembre debería mostrar unos 35 pagos sin abono por unos 27 808 (al 24-nov) y 2 pagos con abono autorizado por 150. Queda por revisar con el usuario los resultados de su primera prueba de `pagos_facturacion` (el archivo no llegó). Fuera de eso, esperar indicaciones para nuevas herramientas (flujo de `MEMORIA.md` sección 5).

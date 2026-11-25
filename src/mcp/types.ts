@@ -169,3 +169,18 @@ export const EncontrarClienteInputSchema = z.object({
   campo: z.enum(['todos', 'documento', 'nombres', 'telefono', 'correo']).optional(),
   limite: z.number().int().min(1).max(200).optional(),
 }).refine((d) => (d.texto === undefined) !== (d.valores === undefined), { message: 'Indique texto (un solo dato) o valores (una lista de hasta 100), no ambos.' });
+
+export const PagosTarjetasInputSchema = z.object({
+  vista: z.enum(['resumen', 'flujo', 'por_cobrar']).optional(),
+  mes: z.number().int().min(1).max(12).optional(),
+  anio: z.number().int().min(2000).max(2100).optional(),
+  fecha_desde: IsoDate.optional(),
+  fecha_hasta: IsoDate.optional(),
+  fecha_base: z.enum(['facturacion', 'pago']).optional(),
+  tipo_valor: z.enum(['neto', 'bruto']).optional(),
+  marca: z.string().max(30).optional(),
+  agrupar_por: z.enum(['dia', 'semana', 'mes', 'marca', 'tipo_credito']).optional(),
+  desglosar_por: z.enum(['dia', 'semana', 'mes', 'marca', 'tipo_credito']).optional(),
+  ordenar_por: z.string().max(20).optional(),
+  direccion: z.enum(['asc', 'desc']).optional(),
+});

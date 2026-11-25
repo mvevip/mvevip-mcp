@@ -32,6 +32,7 @@ import {
   HistorialBaseInputSchema,
   PagosFacturacionInputSchema,
   EncontrarClienteInputSchema,
+  PagosTarjetasInputSchema,
   AsistenciaInputSchema
 } from './mcp/types';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
@@ -42,6 +43,7 @@ import { handleAsignarBaseUsuario, handleEncerarCupoUsuario } from './mcp/tools/
 import { handleHistorialBase } from './mcp/tools/historialBaseTool';
 import { handlePagosFacturacion } from './mcp/tools/pagosFacturacionTool';
 import { handleEncontrarCliente } from './mcp/tools/clienteTool';
+import { handlePagosTarjetas } from './mcp/tools/pagosTarjetasTool';
 import { handleCruceVentas } from './mcp/tools/cruceVentasTool';
 import { handleAsistencia } from './mcp/tools/asistenciaTool';
 import { handleEncontrarContacto } from './mcp/tools/contactoTool';
@@ -724,6 +726,27 @@ const MCP_TOOLS: McpToolDefinition[] = [
         limite: { type: 'integer', minimum: 1, maximum: 200, description: 'Solo con texto: máximo de clientes a devolver (por defecto 50, máximo 200).' }
       }
     }
+  },
+  {
+    name: 'pagos_tarjetas_interdin',
+    description: 'SOLO LECTURA. Pagos de tarjetas de crédito que paga Interdin (Diners Club, Visa, Mastercard y Discover), reproduciendo los paneles «Pagos recibidos por marca de tarjeta» y «Flujo de Caja» del CRM, y los pagos que van a venir por fecha. Valores netos por defecto (lo que paga Interdin después de comisión y retenciones; tipo_valor=bruto da el valor del vale). Ventas = vales y créditos (el crédito es un pago que se valida después y suma); débitos = pagos que nos quitan o aplican y restan a lo que nos van a pagar; neto = ventas − débitos. vista=resumen (por defecto): por marca (ventas, débitos y su porcentaje), grupos (INTERDIN contra efectivo/transferencias y otras tarjetas), comisiones por tipo de crédito y ventas por mes. vista=flujo: las mismas ventas del período por FECHA DE PAGO (agrupar_por dia, semana, mes, marca o tipo_credito, con desglosar_por opcional) e indica cuánto ya se pagó y cuánto falta desde hoy. vista=por_cobrar: lo que Interdin va a pagar de hoy en adelante, por fecha (sin importar cuándo se facturó); solo incluye lo ya cargado por Interdin, un horizonte corto de unas semanas, y casi todo es preliquidado (provisional). Período: mes y anio (por defecto el mes actual) o fecha_desde y fecha_hasta; fecha_base facturacion (por defecto, como el CRM) o pago (cuánto pagó Interdin en el período). marca: Diners, Visa, Mastercard o Discover. Avisa de las filas con las columnas corridas (no cuentan) y de las comisiones sin catálogo. Úsela para "¿cuánto nos pagó Interdin en noviembre?" (fecha_base=pago), "pagos recibidos por marca del 1 de septiembre a hoy", "¿cuánto nos van a pagar esta semana y la próxima?" (vista=por_cobrar, agrupar_por=dia) o "comisiones pagadas por tipo de crédito".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        vista: { type: 'string', enum: ['resumen', 'flujo', 'por_cobrar'], description: "'resumen' (por defecto), 'flujo' (por fecha de pago) o 'por_cobrar' (pagos desde hoy)." },
+        mes: { type: 'number', description: 'Mes 1-12. Omitir para el mes actual.' },
+        anio: { type: 'number', description: 'Año (ej: 2026). Omitir para el año actual.' },
+        fecha_desde: { type: 'string', description: 'Inicio del rango (YYYY-MM-DD), inclusive. Alternativa a mes/anio. En por_cobrar solo acota (nunca antes de hoy).' },
+        fecha_hasta: { type: 'string', description: 'Fin del rango (YYYY-MM-DD), inclusive.' },
+        fecha_base: { type: 'string', enum: ['facturacion', 'pago'], description: "Qué fecha define el período: 'facturacion' (por defecto, como el CRM) o 'pago' (fecha en que paga Interdin). No aplica a por_cobrar." },
+        tipo_valor: { type: 'string', enum: ['neto', 'bruto'], description: "'neto' (por defecto, valor pagado) o 'bruto' (valor del vale)." },
+        marca: { type: 'string', description: 'Filtrar por marca: Diners, Visa, Mastercard o Discover (o DN, VI, MC, DI).' },
+        agrupar_por: { type: 'string', enum: ['dia', 'semana', 'mes', 'marca', 'tipo_credito'], description: "Solo flujo y por_cobrar: agrupación por fecha de pago (dia, semana, mes) o por marca o tipo de crédito. Por defecto 'dia'." },
+        desglosar_por: { type: 'string', enum: ['dia', 'semana', 'mes', 'marca', 'tipo_credito'], description: 'Solo flujo y por_cobrar: segunda agrupación (distinta de agrupar_por), por ejemplo tipo_credito por día.' },
+        ordenar_por: { type: 'string', description: "Solo flujo y por_cobrar: grupo, ventas, debitos o neto (por defecto grupo en fechas y neto en marca o tipo de crédito)." },
+        direccion: { type: 'string', enum: ['asc', 'desc'], description: 'Dirección del orden.' }
+      }
+    }
   }
 ];
 
@@ -859,6 +882,11 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'encontrar_cliente': {
             const parsed = EncontrarClienteInputSchema.parse(toolArgs);
             return rpcResult(await handleEncontrarCliente(parsed));
+          }
+
+          case 'pagos_tarjetas_interdin': {
+            const parsed = PagosTarjetasInputSchema.parse(toolArgs);
+            return rpcResult(await handlePagosTarjetas(parsed));
           }
 
           default:

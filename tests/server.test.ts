@@ -129,7 +129,7 @@ test('flujo completo: usuario + contraseña + código por correo + PKCE + uso en
   assert.equal(init.result.protocolVersion, '2025-03-26');
 
   const list = await (await rpc(token, { jsonrpc: '2.0', id: 2, method: 'tools/list' })).json();
-  assert.deepEqual(list.result.tools.map((t: any) => t.name), ['reporte_ventas_mes', 'cuadro_ventas', 'requerimientos', 'validar_cruce_ventas', 'asistencia', 'encontrar_contacto', 'buscar_base', 'aplicar_base', 'encerar_cupos', 'asignar_base_usuario', 'encerar_cupo_usuario', 'historial_base', 'pagos_facturacion', 'encontrar_cliente']);
+  assert.deepEqual(list.result.tools.map((t: any) => t.name), ['reporte_ventas_mes', 'cuadro_ventas', 'requerimientos', 'validar_cruce_ventas', 'asistencia', 'encontrar_contacto', 'buscar_base', 'aplicar_base', 'encerar_cupos', 'asignar_base_usuario', 'encerar_cupo_usuario', 'historial_base', 'pagos_facturacion', 'encontrar_cliente', 'pagos_tarjetas_interdin']);
 
   // Anotaciones: las de consulta se declaran de solo lectura y las que escriben, no (para que el cliente no pida permiso de más)
   const escritura = ['aplicar_base', 'encerar_cupos', 'asignar_base_usuario', 'encerar_cupo_usuario'];

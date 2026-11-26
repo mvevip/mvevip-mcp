@@ -184,3 +184,16 @@ export const PagosTarjetasInputSchema = z.object({
   ordenar_por: z.string().max(20).optional(),
   direccion: z.enum(['asc', 'desc']).optional(),
 });
+
+export const DebitosInterdinInputSchema = z.object({
+  vista: z.enum(['detalle', 'resumen']).optional(),
+  marca: z.string().max(30).optional(),
+  mes: z.number().int().min(1).max(12).optional(),
+  anio: z.number().int().min(2000).max(2100).optional(),
+  fecha_desde: IsoDate.optional(),
+  fecha_hasta: IsoDate.optional(),
+  tipo: z.enum(['SOLO_EN_CSV', 'SOLO_EN_PROCESAMIENTOS', 'MONTO_DISTINTO', 'FECHA_DISTINTA', 'SIN_VENTA', 'EXCEDE_VENTA', 'POSIBLE_DOBLE_DEBITO', 'AJUSTE_REPETIDO']).optional(),
+  severidad: z.enum(['ALTA', 'MEDIA', 'BAJA']).optional(),
+  estado: z.enum(['abiertas', 'todas', 'NUEVA', 'REVISADA', 'RECLAMADA', 'DESCARTADA', 'AUTO_RESUELTA']).optional(),
+  limite: z.number().int().min(1).max(200).optional(),
+});

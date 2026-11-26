@@ -33,6 +33,7 @@ import {
   PagosFacturacionInputSchema,
   EncontrarClienteInputSchema,
   PagosTarjetasInputSchema,
+  DebitosInterdinInputSchema,
   AsistenciaInputSchema
 } from './mcp/types';
 import { handleSalesReport } from './mcp/tools/salesReportTool';
@@ -44,6 +45,7 @@ import { handleHistorialBase } from './mcp/tools/historialBaseTool';
 import { handlePagosFacturacion } from './mcp/tools/pagosFacturacionTool';
 import { handleEncontrarCliente } from './mcp/tools/clienteTool';
 import { handlePagosTarjetas } from './mcp/tools/pagosTarjetasTool';
+import { handleDebitos } from './mcp/tools/debitosTool';
 import { handleCruceVentas } from './mcp/tools/cruceVentasTool';
 import { handleAsistencia } from './mcp/tools/asistenciaTool';
 import { handleEncontrarContacto } from './mcp/tools/contactoTool';
@@ -747,6 +749,25 @@ const MCP_TOOLS: McpToolDefinition[] = [
         direccion: { type: 'string', enum: ['asc', 'desc'], description: 'Dirección del orden.' }
       }
     }
+  },
+  {
+    name: 'debitos_interdin',
+    description: 'SOLO LECTURA. Alertas de la conciliación de DÉBITOS de Interdin (Diners Club, Visa, Mastercard y Discover): lo que el banco nos debitó según su archivo de liquidación (CSV) contra los débitos registrados en procesamientos de tarjetas. Sirve para detectar débitos que están en una sola fuente y débitos dobles o sin justificar que se pueden reclamar al banco. Tipos: SOLO_EN_CSV (el banco debitó y no está registrado), SOLO_EN_PROCESAMIENTOS (registrado pero el banco no lo trajo; los liquidados LQ son los graves, los preliquidados PR son provisionales), SIN_VENTA (débito sin venta que lo justifique), EXCEDE_VENTA (se debitó más de lo pagado por la venta: típico doble débito), POSIBLE_DOBLE_DEBITO (misma tarjeta y valor dos veces en pocos días; puede ser legítimo), AJUSTE_REPETIDO, MONTO_DISTINTO y FECHA_DISTINTA. Los vales rechazados del banco no son débitos y no generan alertas. Por defecto muestra las alertas abiertas (nuevas, revisadas y reclamadas) de todos los meses, de la más grave a la menos grave, con un resumen por tipo, estado y período. Las alertas las genera y actualiza el servicio de cruce de tarjetas al conciliar cada mes y marca; esta herramienta solo las lee (no concilia ni cambia su estado). Úsela para "¿qué débitos de Interdin hay que revisar?", "¿hay dobles débitos de Diners en septiembre?", "débitos que el banco cobró y no tenemos registrados" (tipo SOLO_EN_CSV) o "resumen de alertas por marca y mes" (vista=resumen).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        vista: { type: 'string', enum: ['detalle', 'resumen'], description: "'detalle' (por defecto): alertas con su resumen. 'resumen': solo totales por tipo, estado y período." },
+        marca: { type: 'string', description: 'Filtrar por marca: Diners, Visa, Mastercard o Discover (o DN, VI, MC, DI).' },
+        mes: { type: 'number', description: 'Mes conciliado (1-12). Omitir para todos los meses.' },
+        anio: { type: 'number', description: 'Año conciliado (ej: 2026).' },
+        fecha_desde: { type: 'string', description: 'Fecha de pago del débito desde (YYYY-MM-DD), inclusive.' },
+        fecha_hasta: { type: 'string', description: 'Fecha de pago del débito hasta (YYYY-MM-DD), inclusive.' },
+        tipo: { type: 'string', enum: ['SOLO_EN_CSV', 'SOLO_EN_PROCESAMIENTOS', 'MONTO_DISTINTO', 'FECHA_DISTINTA', 'SIN_VENTA', 'EXCEDE_VENTA', 'POSIBLE_DOBLE_DEBITO', 'AJUSTE_REPETIDO'], description: 'Filtrar por tipo de alerta.' },
+        severidad: { type: 'string', enum: ['ALTA', 'MEDIA', 'BAJA'], description: 'Filtrar por gravedad.' },
+        estado: { type: 'string', enum: ['abiertas', 'todas', 'NUEVA', 'REVISADA', 'RECLAMADA', 'DESCARTADA', 'AUTO_RESUELTA'], description: "Por defecto 'abiertas' (NUEVA, REVISADA y RECLAMADA). 'todas' incluye las descartadas y las auto-resueltas (ya no aplican)." },
+        limite: { type: 'integer', minimum: 1, maximum: 200, description: 'Máximo de alertas a devolver (por defecto 50, máximo 200).' }
+      }
+    }
   }
 ];
 
@@ -887,6 +908,11 @@ app.post('/mcp', authenticateMcp, async (req: Request, res: Response) => {
           case 'pagos_tarjetas_interdin': {
             const parsed = PagosTarjetasInputSchema.parse(toolArgs);
             return rpcResult(await handlePagosTarjetas(parsed));
+          }
+
+          case 'debitos_interdin': {
+            const parsed = DebitosInterdinInputSchema.parse(toolArgs);
+            return rpcResult(await handleDebitos(parsed));
           }
 
           default:

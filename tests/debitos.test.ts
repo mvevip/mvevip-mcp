@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { DebitosDeps, armarResumen, buildConsultasDebitos, formatearAlerta, handleDebitos } from '../src/mcp/tools/debitosTool';
+import { DebitosDeps, INFO_TIPO, TIPOS_ALERTA_DEBITO, armarResumen, buildConsultasDebitos, formatearAlerta, handleDebitos, queSePaso } from '../src/mcp/tools/debitosTool';
 import { DebitosInterdinInputSchema } from '../src/mcp/types';
 import { validateReadOnlySql } from '../src/services/sqlGuard';
 
@@ -87,16 +87,28 @@ test('caso real de abril (Diners): alertas con liquidado/preliquidado, resumen p
   assert.ok(!r.isError);
   const j = payload(r);
   assert.equal(j.resumen.total_alertas, 6);
-  assert.equal(j.resumen.por_tipo.SOLO_EN_PROCESAMIENTOS.cantidad, 4);
-  assert.equal(j.resumen.por_tipo.SOLO_EN_PROCESAMIENTOS.valor, 403.93);
-  assert.equal(j.resumen.por_tipo.AJUSTE_REPETIDO.valor, 100);
+  const porCodigo = (c: string) => j.resumen.por_tipo.find((t: any) => t.codigo_tipo === c);
+  assert.equal(porCodigo('SOLO_EN_PROCESAMIENTOS').cantidad, 4);
+  assert.equal(porCodigo('SOLO_EN_PROCESAMIENTOS').valor, 403.93);
+  assert.equal(porCodigo('AJUSTE_REPETIDO').valor, 100);
+  // el usuario ve nombres y explicaciones, no códigos; los tipos salen ordenados por lo que hay que hacer primero
+  assert.match(porCodigo('SOLO_EN_PROCESAMIENTOS').nombre, /registrado en el sistema que el banco no confirmó/);
+  assert.match(porCodigo('SOLO_EN_PROCESAMIENTOS').que_hacer, /Confirmar con el banco/);
+  assert.deepEqual(j.resumen.por_tipo.map((t: any) => t.codigo_tipo), ['AJUSTE_REPETIDO', 'SOLO_EN_PROCESAMIENTOS']);
+  assert.deepEqual(j.resumen.que_hacer_en_resumen.map((a: any) => [a.cantidad, a.valor]), [[2, 100], [4, 403.93]]);
+  assert.match(j.como_leer, /liquidaciones que el banco entrega en cada pago/);
+  assert.ok(j.instrucciones_para_presentar.some((i: string) => /no mencione códigos/.test(i)));
   assert.deepEqual(j.resumen.por_periodo, [{ marca: 'Diners', anio: 2026, mes: 4, cantidad: 6, valor: 503.93 }]);
   assert.equal(j.alertas_devueltas, 2);
-  assert.equal(j.alertas[0].liquidado, 'liquidado');
+  assert.equal(j.alertas[0].liquidado, 'liquidado (confirmado por el banco)');
   assert.equal(j.alertas[1].liquidado, 'preliquidado (provisional)');
+  assert.equal(j.alertas[0].prioridad, 'alta');
+  assert.equal(j.alertas[0].estado, 'sin revisar');
+  assert.equal(j.alertas[0].que_paso, 'En el sistema figura un descuento de $50.00 (liquidado) con fecha de pago 2026-04-24 (vale 9164205, lote 9164182, sin tarjeta asociada (ajuste)), pero no aparece en la liquidación que entregó Diners.');
+  assert.doesNotMatch(j.alertas[0].que_paso, /SOLO_EN|procesamientos|csv/i);
   assert.equal(j.alertas[1].valor, 253.93);
   assert.equal(j.alertas[0].tarjeta_ultimos4, null);
-  assert.equal(j.alertas[0].periodo, '2026-04');
+  assert.equal(j.alertas[0].periodo_conciliado, '2026-04');
   assert.equal(j.estado_del_cruce.alertas_en_total, 109);
   assert.deepEqual(j.filtros, { marca: 'Diners', anio: 2026, mes: 4, estado: 'abiertas' });
   assert.ok(j.observaciones.some((o: string) => /no haberse conciliado todavía/.test(o)));
@@ -113,9 +125,10 @@ test('caso real de septiembre (Diners): los rechazados ya no están y las 16 aut
   assert.equal(j.vista, 'resumen');
   assert.equal(j.alertas, undefined);
   assert.equal(j.resumen.total_alertas, 20);
-  assert.deepEqual(j.resumen.por_tipo.SOLO_EN_CSV.por_estado, { AUTO_RESUELTA: 16 });
-  assert.match(j.resumen.por_tipo.SOLO_EN_CSV.significado, /NO está en procesamientos/);
-  assert.ok(j.observaciones.some((o: string) => /vales rechazados/.test(o)));
+  const csv = j.resumen.por_tipo.find((t: any) => t.codigo_tipo === 'SOLO_EN_CSV');
+  assert.deepEqual(csv.por_estado, [{ estado: 'ya no aplica (se resolvió sola al actualizar los datos)', codigo_estado: 'AUTO_RESUELTA', cantidad: 16 }]);
+  assert.match(csv.que_es, /no está en los datos de tarjetas que se cargaron al sistema/);
+  assert.ok(j.observaciones.some((o: string) => /ventas que el banco rechazó/.test(o)));
 });
 
 test('más alertas que el límite: avisa; sin alertas: lo dice; error de la base: isError', async () => {
@@ -140,9 +153,33 @@ test('más alertas que el límite: avisa; sin alertas: lo dice; error de la base
 test('formatearAlerta y armarResumen no fallan con valores vacíos', () => {
   const a = formatearAlerta({ id: 1, tipo: 'SIN_VENTA', severidad: 'MEDIA', banco: 4, anio: 2026, mes: 3, recap: '', vale: null, tarjeta4: '1545', fecha_pago: null, valor: '465.50', valor_otro: null, liquidado: null, detalle: null, refs: null, estado: 'NUEVA', comentario: null, usuario: null, fecha_estado: null });
   assert.equal(a.marca, 'Visa');
+  assert.equal(a.tipo_de_alerta, 'Descuento sin una venta que lo respalde');
+  assert.match(a.que_paso, /^Visa descontó \$465\.50 \(sin vale, tarjeta \*\*\*\*1545\)/);
   assert.equal(a.lote, null);
   assert.equal(a.vale, null);
   assert.equal(a.liquidado, null);
   assert.equal(a.valor, 465.5);
-  assert.deepEqual(armarResumen([], []), { total_alertas: 0, por_tipo: {}, por_periodo: [] });
+  assert.deepEqual(armarResumen([], []), { total_alertas: 0, que_hacer_en_resumen: [], por_tipo: [], por_periodo: [] });
+});
+
+test('todos los tipos tienen nombre, explicación y acción; ningún texto al usuario lleva códigos técnicos', () => {
+  for (const t of TIPOS_ALERTA_DEBITO) {
+    const i = INFO_TIPO[t];
+    assert.ok(i, t);
+    for (const campo of [i.nombre, i.que_es, i.que_hacer]) {
+      assert.ok(campo.length > 20, t);
+      assert.doesNotMatch(campo, /SOLO_EN|EXCEDE_VENTA|SIN_VENTA|procesamientos|\bCSV\b|mve_/i, `${t}: ${campo}`);
+    }
+  }
+  assert.equal(new Set(TIPOS_ALERTA_DEBITO.map((t) => INFO_TIPO[t].orden)).size, TIPOS_ALERTA_DEBITO.length);
+});
+
+test('la frase «qué pasó» explica cada tipo con las cifras de la alerta, sin jerga', () => {
+  const base = { banco: 26, anio: 2026, mes: 3, recap: '2481241', vale: '901654', tarjeta4: '1545', fecha_pago: '2026-03-05', valor: '465.50', valor_otro: null, liquidado: 'PR', detalle: 'x' };
+  assert.equal(queSePaso({ ...base, tipo: 'SOLO_EN_CSV' }), 'Diners descontó $465.50 con fecha de pago 2026-03-05 (vale 901654, lote 2481241, tarjeta ****1545) en su liquidación, pero ese descuento no está registrado en el sistema.');
+  assert.match(queSePaso({ ...base, tipo: 'SIN_VENTA' }), /no encontramos en el sistema la venta que lo justifique/);
+  assert.match(queSePaso({ ...base, tipo: 'EXCEDE_VENTA' }), /posible descuento doble/);
+  assert.match(queSePaso({ ...base, tipo: 'POSIBLE_DOBLE_DEBITO', valor: '860.28', tarjeta4: '8800' }), /La tarjeta \*\*\*\*8800 fue descontada dos veces por \$860\.28/);
+  assert.match(queSePaso({ ...base, tipo: 'MONTO_DISTINTO', valor_otro: '460.00' }), /\$465\.50 en la liquidación y \$460\.00 en el sistema/);
+  for (const t of TIPOS_ALERTA_DEBITO) assert.doesNotMatch(queSePaso({ ...base, tipo: t }), /SOLO_EN|EXCEDE_VENTA|SIN_VENTA|procesamientos|\bCSV\b/i, t);
 });
